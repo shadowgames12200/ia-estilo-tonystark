@@ -1,0 +1,253 @@
+import { ENV } from "./env.js";
+import { detectComplexity, selectModel } from "./model-router.js";
+
+// ─── Groq Types ───
+
+export type GroqRole = "system" | "user" | "assistant";
+
+export type GroqTextContent = {
+  type: "text";
+  text: string;
+};
+
+export type GroqImageContent = {
+  type: "image_url";
+  image_url: {
+    url: string;
+    detail?: "auto" | "low" | "high";
+  };
+};
+
+export type GroqContent = string | GroqTextContent | GroqImageContent;
+
+export type GroqMessage = {
+  role: GroqRole;
+  content: GroqContent | GroqContent[];
+};
+
+export type GroqInvokeParams = {
+  messages: GroqMessage[];
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+};
+
+export type GroqResponse = {
+  id: string;
+  created: number;
+  model: string;
+  choices: Array<{
+    index: number;
+    message: {
+      role: string;
+      content: string;
+    };
+    finish_reason: string | null;
+  }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+};
+
+// ─── Groq API Config ───
+
+const GROQ_API_URL = () => {
+  const base = ENV.groqApiUrl?.replace(/\/$/, "");
+  return `${base}/chat/completions`;
+};
+
+// Exportar função para verificar se a API key está configurada (usada pelo frontend)
+export function isGroqConfigured(): boolean {
+  return !!ENV.groqApiKey;
+}
+
+const assertGroqApiKey = () => {
+  if (!ENV.groqApiKey) {
+    throw new Error(
+      "GROQ_API_KEY is not configured. " +
+      "Please add the GROQ_API_KEY environment variable to your server settings. " +
+      "Get your key at https://console.groq.com/keys"
+    );
+  }
+  // Verificar se a key parece válida (começa com gsk_)
+  if (!ENV.groqApiKey.startsWith("gsk_")) {
+    throw new Error(
+      "GROQ_API_KEY is invalid. Keys must start with 'gsk_'. " +
+      "Get your key at https://console.groq.com/keys"
+    );
+  }
+};
+
+// ─── Retry logic ───
+
+const RETRY_MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 10_000;
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+const computeBackoffDelay = (attempt: number): number => {
+  const cap = Math.min(RETRY_BASE_DELAY_MS * 2 ** attempt, RETRY_MAX_DELAY_MS);
+  const jittered = cap / 2 + Math.random() * (cap / 2);
+  return Math.min(Math.max(jittered, 0), RETRY_MAX_DELAY_MS);
+};
+
+const fetchWithBackoff = async (url: string, init: RequestInit): Promise<Response> => {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || attempt === RETRY_MAX_RETRIES) {
+        return response;
+      }
+
+      // Se for erro de autenticação (401), não fazer retry
+      if (response.status === 401) {
+        return response;
+      }
+
+      console.warn(`[Groq] Request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after status ${response.status}`);
+      try {
+        await response.body?.cancel();
+      } catch {}
+      await sleep(computeBackoffDelay(attempt));
+    } catch (error) {
+      lastError = error;
+      if (attempt === RETRY_MAX_RETRIES) throw error;
+      console.warn(`[Groq] Request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`);
+      await sleep(computeBackoffDelay(attempt));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Groq request failed after exhausting retries");
+};
+
+// ─── Invoke Groq ───
+
+export type GroqInvokeParamsWithStream = GroqInvokeParams & { stream?: boolean };
+
+export async function invokeGroq(params: GroqInvokeParamsWithStream): Promise<GroqResponse | ReadableStream> {
+  assertGroqApiKey();
+
+  const { messages, maxTokens, temperature, stream = false } = params;
+  
+  // Model Routing Dinâmico: seleciona modelo automático se não forçado
+  let modelConfig;
+  if (params.model) {
+    modelConfig = { model: params.model, maxTokens: params.maxTokens ?? 4096, temperature: temperature ?? 0.5, label: "Forced" };
+  } else {
+    // Extrai o conteúdo da última mensagem do usuário para detectar complexidade
+    const userMsg = [...messages].reverse().find(m => m.role === "user");
+    const content = typeof userMsg?.content === "string" ? userMsg.content : "";
+    const complexity = detectComplexity(content);
+    modelConfig = selectModel(complexity);
+  }
+  
+  const model = modelConfig.model;
+  const finalMaxTokens = maxTokens ?? modelConfig.maxTokens;
+  const finalTemperature = temperature ?? modelConfig.temperature;
+
+  const payload: Record<string, unknown> = {
+    model,
+    messages,
+    temperature: finalTemperature,
+    stream,
+  };
+
+  if (typeof finalMaxTokens === "number") {
+    payload.max_tokens = finalMaxTokens;
+  }
+
+  console.log(`[Groq] Calling model: ${model} [${modelConfig.label}] (stream: ${stream}, tokens: ${finalMaxTokens})`);
+
+  const response = await fetchWithBackoff(GROQ_API_URL(), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${ENV.groqApiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMsg = `Groq API error: ${response.status}`;
+
+    if (response.status === 401) {
+      errorMsg = "GROQ_API_KEY is invalid or expired. Please update the GROQ_API_KEY environment variable at https://console.groq.com/keys";
+    } else if (response.status === 429) {
+      errorMsg = "Groq API rate limit exceeded. Please wait a moment and try again.";
+    } else if (response.status === 400) {
+      errorMsg = `Groq API bad request: ${errorText}`;
+    } else if (response.status >= 500) {
+      errorMsg = `Groq API server error (${response.status}). Please try again later.`;
+    }
+
+    throw new Error(errorMsg);
+  }
+
+  if (stream) {
+    return response.body!;
+  }
+
+  return (await response.json()) as GroqResponse;
+}
+
+// ─── Type Guard ───
+
+/**
+ * Type guard para diferenciar GroqResponse de ReadableStream.
+ * Quando invokeGroq é chamado sem stream: true, o retorno é sempre GroqResponse.
+ */
+export function isGroqResponse(response: GroqResponse | ReadableStream): response is GroqResponse {
+  return "choices" in response && Array.isArray(response.choices);
+}
+
+/**
+ * Invoca Groq sem streaming, retornando tipado como GroqResponse.
+ * Use esta função sempre que não precisar de streaming.
+ */
+export async function invokeGroqNonStream(params: GroqInvokeParams): Promise<GroqResponse> {
+  const response = await invokeGroq(params);
+  if (!isGroqResponse(response)) {
+    throw new Error("Unexpected streaming response when non-stream was expected");
+  }
+  return response;
+}
+
+// ─── Helper: Build user message with file content ───
+
+/**
+ * Builds a Groq-compatible message that includes both text and optionally an image.
+ * For text files: content is passed as text directly.
+ * For images: content is passed as image_url with base64 data URI.
+ * For unsupported binary files: a text placeholder is sent.
+ */
+export function buildGroqUserMessage(
+  text: string,
+  base64Image?: string,
+  imageType?: string
+): GroqContent[] {
+  const parts: GroqContent[] = [];
+
+  if (text) {
+    parts.push({ type: "text", text });
+  }
+
+  if (base64Image && imageType) {
+    parts.push({
+      type: "image_url",
+      image_url: {
+        url: `data:${imageType};base64,${base64Image}`,
+        detail: "high",
+      },
+    });
+  }
+
+  return parts;
+}

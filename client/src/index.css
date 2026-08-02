@@ -1,0 +1,252 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Paleta Stark Industries */
+  --jarvis-blue: #00d4ff;
+  --jarvis-cyan: #00ffff;
+  --jarvis-gold: #ffd700;
+  --jarvis-red: #ff3333;
+  --jarvis-bg: #000814;
+  --jarvis-panel: rgba(0, 20, 40, 0.85);
+  --jarvis-border: rgba(0, 212, 255, 0.3);
+  --jarvis-glow: rgba(0, 212, 255, 0.15);
+
+  --radius: 0.5rem;
+  --background: 0 0% 3%;
+  --foreground: 195 100% 85%;
+  --primary: 195 100% 50%;
+  --primary-foreground: 0 0% 0%;
+  --secondary: 195 30% 10%;
+  --secondary-foreground: 195 100% 85%;
+  --muted: 195 20% 8%;
+  --muted-foreground: 195 50% 50%;
+  --accent: 45 100% 50%;
+  --accent-foreground: 0 0% 0%;
+  --destructive: 0 84% 60%;
+  --border: 195 100% 20%;
+  --input: 195 30% 12%;
+  --ring: 195 100% 50%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--jarvis-bg);
+  color: var(--jarvis-blue);
+  font-family: 'Courier New', 'Consolas', monospace;
+  overflow: hidden;
+}
+
+/* ── Scrollbar estilo Stark ── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 20, 40, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--jarvis-blue);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--jarvis-cyan);
+}
+
+/* ── Animações ── */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px var(--jarvis-blue), 0 0 10px var(--jarvis-blue); }
+  50% { box-shadow: 0 0 20px var(--jarvis-blue), 0 0 40px var(--jarvis-blue), 0 0 60px var(--jarvis-blue); }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+@keyframes rotate-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotate-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.4; }
+  94% { opacity: 1; }
+  96% { opacity: 0.6; }
+  97% { opacity: 1; }
+}
+
+@keyframes typing-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes data-stream {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-20px); opacity: 0; }
+}
+
+@keyframes arc-reactor {
+  0% { box-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff, 0 0 40px #00d4ff, inset 0 0 20px rgba(0, 212, 255, 0.3); }
+  50% { box-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff, 0 0 80px #00ffff, inset 0 0 40px rgba(0, 255, 255, 0.5); }
+  100% { box-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff, 0 0 40px #00d4ff, inset 0 0 20px rgba(0, 212, 255, 0.3); }
+}
+
+/* ── Classes utilitárias Stark ── */
+.jarvis-panel {
+  background: var(--jarvis-panel);
+  border: 1px solid var(--jarvis-border);
+  backdrop-filter: blur(10px);
+  position: relative;
+}
+
+.jarvis-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.05) 0%, transparent 50%, rgba(0, 212, 255, 0.02) 100%);
+  pointer-events: none;
+}
+
+.jarvis-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.jarvis-text {
+  color: var(--jarvis-blue);
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.8);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+}
+
+.jarvis-title {
+  color: var(--jarvis-cyan);
+  text-shadow: 0 0 20px rgba(0, 255, 255, 0.9), 0 0 40px rgba(0, 255, 255, 0.5);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.jarvis-gold {
+  color: var(--jarvis-gold);
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+}
+
+.stark-border {
+  border: 1px solid var(--jarvis-border);
+  box-shadow: 0 0 10px var(--jarvis-glow), inset 0 0 10px var(--jarvis-glow);
+}
+
+.scan-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-effect::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--jarvis-blue), transparent);
+  animation: scan-line 4s linear infinite;
+}
+
+.arc-reactor {
+  animation: arc-reactor 2s ease-in-out infinite;
+}
+
+.rotate-slow {
+  animation: rotate-slow 20s linear infinite;
+}
+
+.rotate-reverse {
+  animation: rotate-reverse 15s linear infinite;
+}
+
+.flicker {
+  animation: flicker 8s linear infinite;
+}
+
+/* ── Markdown estilo terminal ── */
+.jarvis-markdown h1, .jarvis-markdown h2, .jarvis-markdown h3 {
+  color: var(--jarvis-cyan);
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
+  border-bottom: 1px solid var(--jarvis-border);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.jarvis-markdown code {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  color: var(--jarvis-cyan);
+  font-family: 'Courier New', monospace;
+}
+
+.jarvis-markdown pre {
+  background: rgba(0, 10, 20, 0.8);
+  border: 1px solid var(--jarvis-border);
+  border-radius: 4px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.jarvis-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.jarvis-markdown a {
+  color: var(--jarvis-gold);
+  text-decoration: none;
+}
+
+.jarvis-markdown a:hover {
+  text-decoration: underline;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+}
+
+.jarvis-markdown ul, .jarvis-markdown ol {
+  padding-left: 1.5rem;
+}
+
+.jarvis-markdown li {
+  margin-bottom: 0.25rem;
+}
+
+.jarvis-markdown blockquote {
+  border-left: 3px solid var(--jarvis-blue);
+  padding-left: 1rem;
+  color: rgba(0, 212, 255, 0.7);
+  font-style: italic;
+}
+
+/* ── Cursor piscante ── */
+.typing-cursor::after {
+  content: '|';
+  animation: typing-cursor 1s step-end infinite;
+  color: var(--jarvis-blue);
+}
