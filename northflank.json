@@ -1,0 +1,28 @@
+{
+  "name": "jarvis-backend",
+  "description": "Backend do J.A.R.V.I.S. rodando em Docker",
+  "billing": {
+    "deployment_plan": "combined-micro"
+  },
+  "deployment": {
+    "instances": 1,
+    "docker": {
+      "dockerfile_path": "Dockerfile",
+      "build_context": "."
+    }
+  },
+  "ports": [
+    {
+      "name": "http",
+      "internal_port": 3000,
+      "public": true,
+      "protocol": "HTTP"
+    }
+  ],
+  "env": [
+    {
+      "key": "NODE_ENV",
+      "value": "production"
+    }
+  ]
+}

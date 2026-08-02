@@ -66,13 +66,32 @@ Uma inteligência artificial avançada inspirada no assistente de Tony Stark, pr
    pnpm dev
    ```
 
-## 🚢 Deploy
+## 🚢 Deploy (Combo Stark)
 
-O projeto está pronto para ser hospedado em diversas plataformas:
+Este projeto foi otimizado para o seguinte "combo" de hospedagem:
 
-- **Vercel**: Ideal para o frontend.
-- **Render / Northflank**: Ideal para o backend (suporta Docker e processos persistentes).
+### 1. Supabase (Banco de Dados & Memória)
+- Crie um projeto no [Supabase](https://supabase.com).
+- Vá em **SQL Editor** e execute o conteúdo do arquivo `supabase_setup.sql`.
+- Copie a `SUPABASE_URL` e a `SUPABASE_ANON_KEY`.
+
+### 2. Northflank (Backend & Sandbox)
+- Crie um serviço do tipo **Combined Service** no [Northflank](https://northflank.com).
+- Conecte este repositório GitHub.
+- Use o `Dockerfile` incluído.
+- Configure as variáveis de ambiente (`.env`) no painel do Northflank.
+- Copie a URL pública gerada (ex: `https://jarvis-api.northflank.app`).
+
+### 3. Vercel (Frontend HUD)
+- Conecte o repositório na [Vercel](https://vercel.com).
+- No arquivo `vercel.json`, substitua `https://seu-app-no-northflank.net` pela URL do seu Northflank.
+- Faça o deploy.
+
+---
+
+### Outras Opções:
 - **Azure**: Utilize Azure App Service para o container Docker.
+- **Render**: Alternativa ao Northflank.
 
 ### Docker
 Para rodar via Docker:
