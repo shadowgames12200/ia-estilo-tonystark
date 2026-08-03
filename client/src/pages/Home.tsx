@@ -340,6 +340,7 @@ export default function Home() {
                       <button
                         key={lang}
                         onClick={() => {
+                          console.log(`[Home] Selecionado idioma: ${lang}`);
                           kittVoice.setLanguage(lang);
                           setShowLanguageMenu(false);
                         }}

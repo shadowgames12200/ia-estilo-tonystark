@@ -279,6 +279,7 @@ export function useKITTVoice() {
 
   // Mudar idioma manualmente
   const setLanguage = useCallback((language: Language) => {
+    console.log(`[KITTVoice] Mudando idioma para: ${language}`);
     setCurrentLanguage(language);
     const langConfig = languageConfig[language];
     setConfig((prev) => ({
