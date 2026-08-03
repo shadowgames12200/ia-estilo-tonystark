@@ -129,29 +129,32 @@ export default function Home() {
       .replace(/\n/g, " ");
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
-    // Try to find British English voice first (for J.A.R.V.I.S. cinematic effect)
-    // Then fallback to Portuguese Brazilian
+    // J.A.R.V.I.S. Voice Configuration - British English with cinematic effect
     const voices = window.speechSynthesis.getVoices();
     let preferred = null;
     
-    // Priority 1: en-GB (British) voices for cinematic J.A.R.V.I.S. sound
+    // Priority 1: Google UK English (closest to JARVIS)
     preferred = voices.find((v) => v.lang === "en-GB" && v.name.includes("Google"));
+    
+    // Priority 2: Any en-GB voice
     if (!preferred) preferred = voices.find((v) => v.lang === "en-GB");
     
-    // Priority 2: pt-BR voices if no British voice found
-    if (!preferred) preferred = voices.find((v) => v.lang === "pt-BR" && v.name.includes("Google"));
-    if (!preferred) preferred = voices.find((v) => v.lang === "pt-BR");
-    if (!preferred) preferred = voices.find((v) => v.lang.startsWith("pt"));
+    // Priority 3: en-US as fallback
+    if (!preferred) preferred = voices.find((v) => v.lang === "en-US");
+    
+    // Priority 4: Any English voice
+    if (!preferred) preferred = voices.find((v) => v.lang.startsWith("en"));
     
     if (preferred) {
       utterance.voice = preferred;
       utterance.lang = preferred.lang;
     } else {
-      utterance.lang = "pt-BR";
+      utterance.lang = "en-GB";
     }
     
-    utterance.rate = speechRate;
-    utterance.pitch = 1.2;
+    // JARVIS voice parameters: slower, deeper, formal
+    utterance.rate = 0.9; // Slower speech for formal, cinematic effect
+    utterance.pitch = 0.8; // Deeper pitch for masculine, authoritative tone
     utterance.volume = 1;
     
     // Apply audio effects via Web Audio API
