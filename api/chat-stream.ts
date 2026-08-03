@@ -16,14 +16,16 @@ Você tem acesso a um sandbox de programação avançada e pode executar código
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const DEFAULT_CONFIG = {
-  maxIterations: 10,
-  maxToolCalls: 10,
+  maxIterations: 5,
+  maxToolCalls: 5,
   model: "llama-3.3-70b-versatile",
+  fastModel: "llama-3.1-8b-instant",
   temperature: 0.4,
-  maxTokens: 4000,
+  maxTokens: 2048,
 };
 
-// Tools definitions for the LLM
+// ─── Tools ───
+
 const WEB_SEARCH_TOOL = {
   type: "function" as const,
   function: {
@@ -54,6 +56,8 @@ const EXECUTE_CODE_TOOL = {
   },
 };
 
+// ─── Types ───
+
 type Message = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -68,21 +72,39 @@ type ToolCall = {
   };
 };
 
-type GroqResponse = {
-  id: string;
-  choices: Array<{
-    index: number;
-    message: {
-      role: string;
-      content: string | null;
-      tool_calls?: ToolCall[];
-    };
-    finish_reason: string | null;
-  }>;
-  usage?: { total_tokens: number };
-};
+// ─── Helpers ───
 
-// Tavily search handler
+/** Select model based on query complexity */
+function selectModel(content: string): string {
+  const lower = content.toLowerCase();
+  const wordCount = content.split(/\s+/).length;
+
+  // Conversas simples e rápidas
+  if (wordCount <= 15) return "llama-3.1-8b-instant";
+  if (wordCount <= 40) return "llama-3.1-8b-instant";
+
+  // Média complexidade
+  const mediumKeywords = ["como", "o que", "quando", "onde", "por que", "who", "what", "how", "when", "where", "why"];
+  if (mediumKeywords.some((kw) => lower.includes(kw))) return "llama-3.1-8b-instant";
+
+  // Tarefas complexas
+  const complexKeywords = ["analyze", "program", "code", "function", "class", "algorithm", "data structure", "analisar", "programar", "código", "função"];
+  if (complexKeywords.some((kw) => lower.includes(kw))) return "llama-3.3-70b-versatile";
+
+  return "llama-3.1-8b-instant";
+}
+
+/** Check if a message needs tools */
+function needsTools(content: string): boolean {
+  const lower = content.toLowerCase();
+  const needsResearch = ["pesquisar", "pesquisa", "search", "notícia", "news", "últimas", "latest", "hoje", "today", "atual", "current", "agora", "now", "tempo", "weather", "clima", "preço", "price", "valor", "dólar"];
+  const needsComputation = ["calcular", "calcule", "calculate", "quanto é", "how much", "soma", "multiplicar", "porcentagem", "percent", "math", "matemática"];
+
+  return needsResearch.some((kw) => lower.includes(kw)) || needsComputation.some((kw) => lower.includes(kw));
+}
+
+// ─── Tool Handlers ───
+
 async function webSearch(query: string): Promise<string> {
   const tavilyKey = process.env.TAVILY_API_KEY;
   if (!tavilyKey) {
@@ -108,55 +130,144 @@ async function webSearch(query: string): Promise<string> {
     }
     return "Nenhum resultado encontrado.";
   } catch (error) {
-    console.error("[Chat] Tavily error:", error);
     return searchDuckDuckGo(query);
   }
 }
 
-// DuckDuckGo fallback search
 async function searchDuckDuckGo(query: string): Promise<string> {
   try {
-    const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`);
-    const data = await response.json();
-    if (data.AbstractText) return data.AbstractText;
-    if (data.Results && data.Results.length > 0) {
-      return data.Results.slice(0, 3)
-        .map((r: any) => `${r.Text}: ${r.FirstURL}`)
-        .join("\n");
+    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Jarvis/1.0)" },
+    });
+    const html = await response.text();
+
+    const results: string[] = [];
+    const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
+
+    let match;
+    let idx = 0;
+    while ((match = resultRegex.exec(html)) !== null && idx < 5) {
+      const title = match[2].replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+      const url = match[1];
+      results.push(`${idx + 1}. **${title}**\n${url}`);
+      idx++;
     }
-    return "Nenhum resultado encontrado.";
-  } catch (error) {
-    console.error("[Chat] DuckDuckGo error:", error);
-    return "Desculpe, não consegui pesquisar no momento.";
+
+    if (results.length > 0) {
+      return `Resultados da pesquisa para "${query}":\n\n${results.join("\n\n")}`;
+    }
+    return `Não encontrei resultados específicos para "${query}" via DuckDuckGo. Posso tentar outra abordagem?`;
+  } catch (err) {
+    return `Erro na pesquisa DuckDuckGo: ${(err as Error).message}`;
   }
 }
 
-// Tool call handler
+function executeJs(code: string): string {
+  try {
+    const result = Function('"use strict"; return (' + code + ')')();
+    return `Resultado: ${JSON.stringify(result)}`;
+  } catch (err) {
+    return `Erro ao executar código: ${(err as Error).message}`;
+  }
+}
+
 async function handleToolCall(toolName: string, toolArgs: Record<string, unknown>): Promise<string> {
-  if (toolName === "web_search") {
-    const query = toolArgs.query as string;
-    return await webSearch(query);
+  switch (toolName) {
+    case "web_search":
+      return await webSearch(toolArgs.query as string);
+    case "execute_js":
+      return executeJs(toolArgs.code as string);
+    default:
+      return `Ferramenta não disponível: ${toolName}`;
   }
-  if (toolName === "execute_js") {
-    const code = toolArgs.code as string;
-    try {
-      const result = eval(code);
-      return String(result);
-    } catch (error) {
-      return `Erro ao executar código: ${(error as Error).message}`;
+}
+
+// ─── SSE Stream Helpers ───
+
+/** Read the Groq streaming response and process each chunk */
+async function processGroqStream(
+  groqResponse: Response,
+  onChunk: (content: string, toolCalls?: ToolCall[]) => void,
+  onToolCall: (toolCalls: ToolCall[]) => void,
+  onFinish: (content: string) => void
+): Promise<string> {
+  if (!groqResponse.body) {
+    throw new Error("No response body from Groq");
+  }
+
+  const reader = groqResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullContent = "";
+  let toolCallsAccumulated: ToolCall[] | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process SSE events
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const data = line.slice(6);
+
+        if (data === "[DONE]") {
+          onFinish(fullContent);
+          return fullContent;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          const choice = parsed.choices?.[0];
+
+          if (!choice) continue;
+
+          // Handle tool calls in streaming
+          if (choice.delta?.tool_calls) {
+            if (!toolCallsAccumulated) {
+              toolCallsAccumulated = [];
+            }
+            for (const tc of choice.delta.tool_calls) {
+              if (tc.index !== undefined) {
+                if (!toolCallsAccumulated[tc.index]) {
+                  toolCallsAccumulated[tc.index] = {
+                    id: "",
+                    type: "function",
+                    function: { name: "", arguments: "" },
+                  };
+                }
+                if (tc.id) toolCallsAccumulated[tc.index].id += tc.id;
+                if (tc.function?.name) toolCallsAccumulated[tc.index].function.name += tc.function.name;
+                if (tc.function?.arguments) toolCallsAccumulated[tc.index].function.arguments += tc.function.arguments;
+              }
+            }
+            onToolCall(toolCallsAccumulated);
+          }
+
+          // Handle content chunks
+          const content = choice.delta?.content;
+          if (content) {
+            fullContent += content;
+            onChunk(content, toolCallsAccumulated);
+          }
+        } catch (parseErr) {
+          // Ignore malformed chunks
+          console.warn("[Stream] Parse error:", parseErr);
+        }
+      }
     }
   }
-  return "Ferramenta desconhecida.";
+
+  onFinish(fullContent);
+  return fullContent;
 }
 
-// Select model based on query
-function selectModel(query: string): string {
-  const codeKeywords = ["code", "function", "class", "variable", "execute", "script"];
-  const hasCode = codeKeywords.some((kw) => query.toLowerCase().includes(kw));
-  return hasCode ? "llama-3.3-70b-versatile" : "mixtral-8x7b-32768";
-}
+// ─── Main Handler ───
 
-// Main handler with streaming
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -173,6 +284,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) {
+    console.error("[Chat Stream] GROQ_API_KEY not configured");
     return res.status(500).json({ error: "GROQ_API_KEY not configured" });
   }
 
@@ -180,35 +292,50 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Transfer-Encoding", "chunked");
 
   try {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const conversationHistory: Message[] = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ...messages.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+      })),
     ];
 
+    // Send initial processing event
+    res.write(`data: ${JSON.stringify({ type: "start", message: "Processando..." })}\n\n`);
+
     let toolCallCount = 0;
-    let fullContent = "";
+    let fullResponse = "";
 
     for (let iteration = 0; iteration < cfg.maxIterations; iteration++) {
       const lastUserMsg = [...conversationHistory].reverse().find((m) => m.role === "user");
-      const model = cfg.model || selectModel(lastUserMsg?.content || "");
+      const queryContent = lastUserMsg?.content || "";
+
+      // Select model based on complexity
+      const model = selectModel(queryContent);
+
+      // Check if tools are needed
+      const shouldUseTools = needsTools(queryContent) && toolCallCount < cfg.maxToolCalls;
 
       const payload: Record<string, unknown> = {
         model,
         messages: conversationHistory,
         temperature: cfg.temperature,
         max_tokens: cfg.maxTokens,
+        stream: true,
       };
 
-      // Add tools if available
-      if (toolCallCount < cfg.maxToolCalls) {
+      if (shouldUseTools) {
         payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL];
         payload.tool_choice = "auto";
       }
 
-      const response = await fetch(GROQ_API_URL, {
+      // Make streaming request to Groq
+      const groqResponse = await fetch(GROQ_API_URL, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -217,22 +344,40 @@ async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("[Chat Stream] Groq API error:", response.status, errorText);
-        res.write(`data: ${JSON.stringify({ error: `Groq API error: ${response.status}` })}\n\n`);
+      if (!groqResponse.ok) {
+        const errorText = await groqResponse.text();
+        console.error("[Chat Stream] Groq API error:", groqResponse.status, errorText);
+        res.write(`data: ${JSON.stringify({ type: "error", error: `Groq API error: ${groqResponse.status}` })}\n\n`);
         return res.end();
       }
 
-      const data: GroqResponse = await response.json();
-      const message = data.choices[0]?.message;
+      // Process the streaming response
+      let toolCallsDetected: ToolCall[] | null = null;
 
-      if (!message) break;
+      await processGroqStream(
+        groqResponse,
+        // onChunk
+        (content, toolCalls) => {
+          res.write(`data: ${JSON.stringify({ type: "chunk", content, model })}\n\n`);
+        },
+        // onToolCall
+        (toolCalls) => {
+          toolCallsDetected = toolCalls;
+          res.write(`data: ${JSON.stringify({ type: "tool_calls", toolCalls })}\n\n`);
+        },
+        // onFinish
+        (content) => {
+          fullResponse = content;
+        }
+      );
 
-      const toolCalls = message.tool_calls;
+      // Check if we got tool calls
+      if (toolCallsDetected && toolCallsDetected.length > 0 && toolCallCount < cfg.maxToolCalls) {
+        // Notify about tool execution
+        res.write(`data: ${JSON.stringify({ type: "thinking", message: "Executando ferramentas..." })}\n\n`);
 
-      if (toolCalls && toolCalls.length > 0 && toolCallCount < cfg.maxToolCalls) {
-        for (const toolCall of toolCalls) {
+        // Execute tool calls
+        for (const toolCall of toolCallsDetected) {
           const toolName = toolCall.function.name;
           let toolArgs: Record<string, unknown>;
           try {
@@ -242,87 +387,45 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           toolCallCount++;
-          console.log(`[Chat Stream] Tool call: ${toolName} (iteration ${iteration + 1})`);
+
+          // Notify about tool call
+          res.write(`data: ${JSON.stringify({ type: "tool_call", toolName, toolArgs })}\n\n`);
 
           const result = await handleToolCall(toolName, toolArgs);
 
-          // Add assistant message with tool calls
-          conversationHistory.push({
-            role: "assistant" as any,
+          // Add assistant message with tool calls to history
+          (conversationHistory as any[]).push({
+            role: "assistant",
             content: "",
-          } as any);
-          (conversationHistory[conversationHistory.length - 1] as any).tool_calls = toolCalls;
+            tool_calls: toolCallsDetected,
+          });
 
           // Add tool result
-          conversationHistory.push({
-            role: "assistant" as any,
+          (conversationHistory as any[]).push({
+            role: "tool",
             content: `[${toolName}]: ${result.slice(0, 3000)}`,
-          } as any);
-          (conversationHistory[conversationHistory.length - 1] as any).role = "tool";
-          (conversationHistory[conversationHistory.length - 1] as any).name = toolName;
-          (conversationHistory[conversationHistory.length - 1] as any).tool_call_id = toolCall.id;
+            name: toolName,
+            tool_call_id: toolCall.id,
+          });
         }
+
+        // Continue loop for next iteration
+        continue;
       } else {
-        // No tool calls — stream content in chunks
-        const content = message.content || "";
-        fullContent = content;
-
-        // Split content into sentences/chunks for streaming
-        const chunks = content.match(/[^.!?]*[.!?]+|[^.!?]*$/g) || [content];
-
-        for (const chunk of chunks) {
-          if (chunk.trim()) {
-            res.write(`data: ${JSON.stringify({ chunk: chunk.trim() + " " })}\n\n`);
-            // Small delay between chunks for better streaming effect
-            await new Promise((resolve) => setTimeout(resolve, 50));
-          }
-        }
-
-        res.write(`data: ${JSON.stringify({ done: true, full: fullContent })}\n\n`);
+        // No tool calls — response is complete
+        res.write(`data: ${JSON.stringify({ type: "done", content: fullResponse, model, iterations: iteration + 1, toolCalls: toolCallCount })}\n\n`);
         return res.end();
       }
     }
 
-    // If we exhausted iterations, generate final summary
-    const summaryPayload: Record<string, unknown> = {
-      model: "llama-3.3-70b-versatile",
-      messages: conversationHistory,
-      max_tokens: cfg.maxTokens,
-      temperature: 0.3,
-    };
-
-    const summaryResponse = await fetch(GROQ_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify(summaryPayload),
-    });
-
-    if (!summaryResponse.ok) {
-      res.write(`data: ${JSON.stringify({ error: `Summary generation failed: ${summaryResponse.status}` })}\n\n`);
-      return res.end();
-    }
-
-    const summaryData: GroqResponse = await summaryResponse.json();
-    const finalContent = summaryData.choices[0]?.message?.content || "Não consegui completar a tarefa no tempo limite.";
-
-    // Stream final content
-    const chunks = finalContent.match(/[^.!?]*[.!?]+|[^.!?]*$/g) || [finalContent];
-    for (const chunk of chunks) {
-      if (chunk.trim()) {
-        res.write(`data: ${JSON.stringify({ chunk: chunk.trim() + " " })}\n\n`);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-
-    res.write(`data: ${JSON.stringify({ done: true, full: finalContent })}\n\n`);
+    // If we exhausted iterations without tool calls, end
+    res.write(`data: ${JSON.stringify({ type: "done", content: fullResponse, model, iterations: cfg.maxIterations, toolCalls: toolCallCount })}\n\n`);
     return res.end();
   } catch (error) {
     console.error("[Chat Stream] Error:", error);
     res.write(
       `data: ${JSON.stringify({
+        type: "error",
         error: "Sinto muito, Senhor. Estou tendo dificuldades para processar sua solicitação no momento.",
       })}\n\n`
     );
@@ -338,5 +441,6 @@ export const config = {
     bodyParser: {
       sizeLimit: "1mb",
     },
+    responseLimit: false,
   },
 };

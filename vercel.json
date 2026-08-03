@@ -9,8 +9,20 @@
       "destination": "/api/chat"
     },
     {
+      "source": "/api/chat-stream",
+      "destination": "/api/chat-stream"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/chat-stream.ts": {
+      "maxDuration": 30
+    },
+    "api/chat.ts": {
+      "maxDuration": 30
+    }
+  }
 }
