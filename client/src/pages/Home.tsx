@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { Streamdown } from "streamdown";
-import { Send, Volume2, VolumeX, Mic, Power, Loader } from "lucide-react";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Volume, VolumeX as VolumeMinus } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useKITTVoice } from "@/hooks/useKITTVoice";
 
 type Message = {
   role: "user" | "assistant";
@@ -51,13 +52,13 @@ export default function Home() {
   });
   const [input, setInput] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [speechRate, setSpeechRate] = useState(1.3);
   const [showPanel, setShowPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Usar o novo hook KITT Voice
+  const kittVoice = useKITTVoice();
 
   // Detectar dispositivo automaticamente
   const { isMobile, isTablet, isDesktop } = useDeviceType();
@@ -67,6 +68,7 @@ export default function Home() {
 
   const sendChat = useCallback(async (msgs: Array<{ role: string; content: string }>) => {
     setIsLoading(true);
+    setIsTyping(true);
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -75,6 +77,7 @@ export default function Home() {
       });
       const data = await response.json();
       setIsLoading(false);
+      setIsTyping(false);
 
       if (data.success) {
         const assistantMsg: Message = {
@@ -88,7 +91,7 @@ export default function Home() {
           return next;
         });
         if (voiceEnabled) {
-          speakText(data.content);
+          kittVoice.speak(data.content);
         }
       } else {
         const errMsg: Message = {
@@ -100,6 +103,7 @@ export default function Home() {
       }
     } catch (error) {
       setIsLoading(false);
+      setIsTyping(false);
       const errMsg: Message = {
         role: "assistant",
         content: "I appear to be experiencing a momentary systems disruption, Sir. My neural pathways are temporarily offline. Please stand by.",
@@ -107,81 +111,7 @@ export default function Home() {
       };
       setMessages((prev) => [...prev, errMsg]);
     }
-  }, [voiceEnabled]);
-
-  const speakText = useCallback((text: string) => {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    
-    // Ensure voices are loaded
-    if (window.speechSynthesis.getVoices().length === 0) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        speakText(text);
-      };
-      return;
-    }
-
-    const cleanText = text
-      .replace(/\*\*(.*?)\*\*/g, "$1")
-      .replace(/\*(.*?)\*/g, "$1")
-      .replace(/`(.*?)`/g, "$1")
-      .replace(/#{1,6}\s/g, "")
-      .replace(/\n/g, " ");
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // J.A.R.V.I.S. Voice Configuration - British English with cinematic effect
-    const voices = window.speechSynthesis.getVoices();
-    let preferred = null;
-    
-    // Priority 1: Google UK English (closest to JARVIS)
-    preferred = voices.find((v) => v.lang === "en-GB" && v.name.includes("Google"));
-    
-    // Priority 2: Any en-GB voice
-    if (!preferred) preferred = voices.find((v) => v.lang === "en-GB");
-    
-    // Priority 3: en-US as fallback
-    if (!preferred) preferred = voices.find((v) => v.lang === "en-US");
-    
-    // Priority 4: Any English voice
-    if (!preferred) preferred = voices.find((v) => v.lang.startsWith("en"));
-    
-    if (preferred) {
-      utterance.voice = preferred;
-      utterance.lang = preferred.lang;
-    } else {
-      utterance.lang = "en-GB";
-    }
-    
-    // JARVIS voice parameters: slower, deeper, formal
-    utterance.rate = 0.9; // Slower speech for formal, cinematic effect
-    utterance.pitch = 0.8; // Deeper pitch for masculine, authoritative tone
-    utterance.volume = 1;
-    
-    // Apply audio effects via Web Audio API
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      // Create a subtle background tone for cinematic effect
-      oscillator.frequency.value = 60;
-      oscillator.type = "sine";
-      gainNode.gain.value = 0;
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.1);
-    } catch {
-      // Audio effects not available
-    }
-    
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    speechRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-  }, [speechRate]);
+  }, [voiceEnabled, kittVoice]);
 
   const {
     transcript,
@@ -192,11 +122,6 @@ export default function Home() {
     stopListening,
     resetTranscript,
   } = useSpeechRecognition();
-
-  const stopSpeaking = useCallback(() => {
-    window.speechSynthesis?.cancel();
-    setIsSpeaking(false);
-  }, []);
 
   const handleSend = useCallback(
     (content: string) => {
@@ -211,11 +136,10 @@ export default function Home() {
       setMessages(newMessages);
       try { sessionStorage.setItem("jarvis-history", JSON.stringify(newMessages)); } catch { /* ignore */ }
       setInput("");
-      setIsTyping(true);
-      stopSpeaking();
+      kittVoice.stop();
       sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
     },
-    [messages, isLoading, sendChat, stopSpeaking]
+    [messages, isLoading, sendChat, kittVoice]
   );
 
   const handleMicClick = useCallback(() => {
@@ -314,13 +238,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
               {/* Status indicators — compacto no mobile */}
               <div className={`hidden md:flex items-center gap-4 font-mono text-xs`}>
                 <div className="flex items-center gap-1.5">
                   <div className={`w-1.5 h-1.5 rounded-full ${isTyping ? "bg-amber-400 animate-pulse" : "bg-cyan-400"}`} />
                   <span className="text-cyan-400/60">
-                    {isTyping ? "PROCESSING" : isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "STANDBY"}
+                    {isTyping ? "PROCESSING" : kittVoice.isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "STANDBY"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -332,7 +256,7 @@ export default function Home() {
               {/* Mobile: indicador de status mini */}
               {isMobile && (
                 <div className="flex items-center gap-1">
-                  <div className={`w-2 h-2 rounded-full ${isTyping ? "bg-amber-400 animate-pulse" : isSpeaking ? "bg-cyan-400 animate-pulse" : isListening ? "bg-red-400 animate-pulse" : "bg-cyan-400"}`} />
+                  <div className={`w-2 h-2 rounded-full ${isTyping ? "bg-amber-400 animate-pulse" : kittVoice.isSpeaking ? "bg-cyan-400 animate-pulse" : isListening ? "bg-red-400 animate-pulse" : "bg-cyan-400"}`} />
                 </div>
               )}
 
@@ -365,7 +289,7 @@ export default function Home() {
               {/* Voice toggle — compacto no mobile */}
               <button
                 onClick={() => {
-                  if (isSpeaking) stopSpeaking();
+                  if (kittVoice.isSpeaking) kittVoice.stop();
                   setVoiceEnabled((v) => !v);
                 }}
                 className={`flex items-center gap-1 rounded border font-mono transition-all ${
@@ -381,9 +305,9 @@ export default function Home() {
               </button>
 
               {/* Stop speaking */}
-              {isSpeaking && (
+              {kittVoice.isSpeaking && (
                 <button
-                  onClick={stopSpeaking}
+                  onClick={() => kittVoice.stop()}
                   className="flex items-center gap-1 px-2 py-1 rounded border border-amber-400/50 text-amber-300 bg-amber-400/10 font-mono text-[10px] animate-pulse-glow"
                 >
                   <Power size={10} />
@@ -394,17 +318,44 @@ export default function Home() {
               {/* Speech rate control — hidden no mobile */}
               {voiceEnabled && (
                 <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded border border-cyan-400/30 bg-cyan-400/5">
+                  <button
+                    onClick={() => kittVoice.decreaseSpeed()}
+                    className="p-1 hover:bg-cyan-400/20 rounded transition-all"
+                    title="Diminuir velocidade"
+                  >
+                    <span className="text-xs">−</span>
+                  </button>
                   <span className="font-mono text-xs text-cyan-400/60 whitespace-nowrap">SPEED</span>
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="1.5"
-                    step="0.1"
-                    value={speechRate}
-                    onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                    className="w-20 h-1.5 rounded cursor-pointer accent-cyan-400"
-                  />
-                  <span className="font-mono text-xs text-cyan-300 w-8 text-right">{speechRate.toFixed(1)}x</span>
+                  <span className="font-mono text-xs text-cyan-300 w-12 text-center">{kittVoice.config.rate.toFixed(1)}x</span>
+                  <button
+                    onClick={() => kittVoice.increaseSpeed()}
+                    className="p-1 hover:bg-cyan-400/20 rounded transition-all"
+                    title="Aumentar velocidade"
+                  >
+                    <span className="text-xs">+</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Volume control — hidden no mobile */}
+              {voiceEnabled && (
+                <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded border border-cyan-400/30 bg-cyan-400/5">
+                  <button
+                    onClick={() => kittVoice.decreaseVolume()}
+                    className="p-1 hover:bg-cyan-400/20 rounded transition-all"
+                    title="Diminuir volume"
+                  >
+                    <VolumeMinus size={12} />
+                  </button>
+                  <span className="font-mono text-xs text-cyan-400/60 whitespace-nowrap">VOL</span>
+                  <span className="font-mono text-xs text-cyan-300 w-12 text-center">{Math.round(kittVoice.config.volume * 100)}%</span>
+                  <button
+                    onClick={() => kittVoice.increaseVolume()}
+                    className="p-1 hover:bg-cyan-400/20 rounded transition-all"
+                    title="Aumentar volume"
+                  >
+                    <Volume size={12} />
+                  </button>
                 </div>
               )}
 
@@ -493,7 +444,7 @@ export default function Home() {
                     onClick={() => {
                       setMessages([]);
                       sessionStorage.removeItem("jarvis-history");
-                      stopSpeaking();
+                      kittVoice.stop();
                     }}
                     className="font-mono text-[10px] text-cyan-400/25 hover:text-cyan-400/60 transition-colors tracking-widest"
                   >
@@ -787,64 +738,54 @@ export default function Home() {
               </div>
             )}
           </div>
-
-          {/* Footer — adaptado */}
-          <footer className={`py-1.5 sm:py-2 border-t border-cyan-400/10 flex items-center justify-between font-mono text-cyan-400/20 ${isMobile ? "text-[8px]" : "text-xs"}`}>
-            <span>STARK INDUSTRIES — JARVIS INTERFACE v7.3.1</span>
-            <span className="hidden sm:inline">© STARK INDUSTRIES. ALL RIGHTS RESERVED.</span>
-          </footer>
         </div>
       </div>
     </>
   );
 }
 
-// Live clock component
+// Helper components
 function LiveClock() {
   const [time, setTime] = useState(new Date());
+
   useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
+    const interval = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(interval);
   }, []);
+
   return (
-    <div>
-      <div
-        className="text-cyan-300 text-lg font-bold text-glow-cyan"
-        style={{ fontFamily: "'Orbitron', sans-serif" }}
-      >
-        {time.toLocaleTimeString("en-US", { hour12: false })}
-      </div>
-      <div className="text-cyan-400/40 text-xs mt-0.5">
-        {time.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}
-      </div>
+    <div className="font-mono text-lg text-cyan-300 tracking-widest">
+      {time.toLocaleTimeString("en-US", { hour12: false })}
     </div>
   );
 }
 
-// Scrolling data stream component
-const HEX_CHARS = "0123456789ABCDEF";
-function randomHex(len: number) {
-  return Array.from({ length: len }, () => HEX_CHARS[Math.floor(Math.random() * 16)]).join("");
-}
-
 function DataStream() {
-  const [lines, setLines] = useState<string[]>(() =>
-    Array.from({ length: 12 }, () => randomHex(8))
-  );
+  const [data, setData] = useState<string[]>([]);
+
   useEffect(() => {
-    const t = setInterval(() => {
-      setLines((prev) => [...prev.slice(1), randomHex(8)]);
-    }, 300);
-    return () => clearInterval(t);
+    const lines = [
+      "SYS_CORE: 98.2%",
+      "NET_FLOW: 2.4GB/s",
+      "CPU_LOAD: 34%",
+      "MEM_AVAIL: 8.2GB",
+      "CACHE_HIT: 94.1%",
+    ];
+
+    const interval = setInterval(() => {
+      setData((prev) => {
+        const newData = [lines[Math.floor(Math.random() * lines.length)], ...prev.slice(0, 3)];
+        return newData;
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, []);
+
   return (
-    <div className="space-y-0.5 overflow-hidden">
-      {lines.map((line, i) => (
-        <div
-          key={`${line}-${i}`}
-          className="font-mono text-[10px] text-cyan-400/30"
-          style={{ opacity: 0.3 + (i / lines.length) * 0.7 }}
-        >
+    <div className="space-y-1">
+      {data.map((line, i) => (
+        <div key={i} className="font-mono text-[10px] text-cyan-400/60 opacity-70">
           {line}
         </div>
       ))}
