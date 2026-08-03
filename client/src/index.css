@@ -46,6 +46,15 @@ html, body {
   overflow: hidden;
 }
 
+/* Mobile: permitir scroll quando teclado virtual aparecer */
+@media (max-width: 767px) {
+  html, body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* ── Scrollbar estilo Stark ── */
 ::-webkit-scrollbar {
   width: 4px;

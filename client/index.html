@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="description" content="J.A.R.V.I.S. — IA estilo Tony Stark com interface holográfica" />
     <title>J.A.R.V.I.S. — Stark Industries AI</title>
     <style>
@@ -15,6 +17,13 @@
       #root {
         width: 100vw;
         height: 100vh;
+      }
+      /* Mobile: permitir scroll quando necessário */
+      @media (max-width: 767px) {
+        body {
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
       }
     </style>
   </head>
