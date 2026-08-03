@@ -5,19 +5,12 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://seu-app-no-northflank.net/api/:path*"
-    },
-    {
-      "source": "/trpc/:path*",
-      "destination": "https://seu-app-no-northflank.net/trpc/:path*"
+      "source": "/api/chat",
+      "destination": "/api/chat"
     },
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "https://seu-app-no-northflank.net"
-  }
+  ]
 }

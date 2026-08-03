@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { trpc } from "@/lib/trpc";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { Streamdown } from "streamdown";
 import { Send, Volume2, VolumeX, Mic, Power, Loader } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import { useStreamingChat } from "@/hooks/useStreamingChat";
 
 type Message = {
   role: "user" | "assistant";
@@ -41,33 +39,52 @@ export default function Home() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  const chatMutation = trpc.jarvis.chat.useMutation({
-    onSuccess: (data) => {
-      const assistantMsg: Message = {
-        role: "assistant",
-        content: data.content,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => {
-        const next = [...prev, assistantMsg];
-        try { sessionStorage.setItem("jarvis-history", JSON.stringify(next)); } catch { /* ignore */ }
-        return next;
+  // Use fetch-based chat API instead of tRPC for Vercel serverless compatibility
+  const [isLoading, setIsLoading] = useState(false);
+
+  const sendChat = useCallback(async (msgs: Array<{ role: string; content: string }>) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: msgs }),
       });
-      setIsTyping(false);
-      if (voiceEnabled) {
-        speakText(data.content);
+      const data = await response.json();
+      setIsLoading(false);
+
+      if (data.success) {
+        const assistantMsg: Message = {
+          role: "assistant",
+          content: data.content,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, assistantMsg];
+          try { sessionStorage.setItem("jarvis-history", JSON.stringify(next)); } catch { /* ignore */ }
+          return next;
+        });
+        if (voiceEnabled) {
+          speakText(data.content);
+        }
+      } else {
+        const errMsg: Message = {
+          role: "assistant",
+          content: "I appear to be experiencing a momentary systems disruption, Sir. My neural pathways are temporarily offline. Please stand by.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errMsg]);
       }
-    },
-    onError: () => {
+    } catch (error) {
+      setIsLoading(false);
       const errMsg: Message = {
         role: "assistant",
         content: "I appear to be experiencing a momentary systems disruption, Sir. My neural pathways are temporarily offline. Please stand by.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errMsg]);
-      setIsTyping(false);
-    },
-  });
+    }
+  }, [voiceEnabled, speakText]);
 
   const speakText = useCallback((text: string) => {
     if (!("speechSynthesis" in window)) return;
@@ -150,7 +167,6 @@ export default function Home() {
     resetTranscript,
   } = useSpeechRecognition();
 
-  const { streamingContent, isStreaming, streamChat } = useStreamingChat();
 
   const stopSpeaking = useCallback(() => {
     window.speechSynthesis?.cancel();
@@ -160,7 +176,7 @@ export default function Home() {
   const handleSend = useCallback(
     (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed || chatMutation.isPending) return;
+      if (!trimmed || isLoading) return;
       const userMsg: Message = {
         role: "user",
         content: trimmed,
@@ -172,11 +188,9 @@ export default function Home() {
       setInput("");
       setIsTyping(true);
       stopSpeaking();
-      chatMutation.mutate({
-        messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-      });
+      sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
     },
-    [messages, chatMutation, stopSpeaking]
+    [messages, isLoading, sendChat, stopSpeaking]
   );
 
   const handleMicClick = useCallback(() => {
@@ -559,14 +573,14 @@ export default function Home() {
                       onKeyDown={handleKeyDown}
                       placeholder="Enter command, Sir..."
                       rows={1}
-                      disabled={chatMutation.isPending}
+                      disabled={isLoading}
                       className="w-full bg-transparent border-0 outline-none resize-none font-mono text-sm text-cyan-100 placeholder:text-cyan-400/30 py-2 px-1 max-h-32"
                       style={{ fontFamily: "'Share Tech Mono', monospace" }}
                     />
                   </div>
                   <button
                     onClick={() => handleSend(input)}
-                    disabled={!input.trim() || chatMutation.isPending}
+                    disabled={!input.trim() || isLoading}
                     className="flex items-center gap-2 px-4 py-2 rounded border border-cyan-400/50 text-cyan-300 bg-cyan-400/10 font-mono text-xs tracking-widest hover:bg-cyan-400/20 hover:border-cyan-400/80 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 glow-cyan"
                   >
                     <Send size={12} />
