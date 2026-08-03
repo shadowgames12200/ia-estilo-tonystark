@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { Streamdown } from "streamdown";
-import { Send, Volume2, VolumeX, Mic, Power, Loader, Volume, VolumeX as VolumeMinus } from "lucide-react";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Volume, VolumeX as VolumeMinus, Globe } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
+import { detectLanguageFromText, type Language } from "@/lib/languageDetector";
 
 type Message = {
   role: "user" | "assistant";
@@ -54,6 +55,7 @@ export default function Home() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,7 +93,9 @@ export default function Home() {
           return next;
         });
         if (voiceEnabled) {
-          kittVoice.speak(data.content);
+          // Detectar idioma do texto da resposta
+          const detected = detectLanguageFromText(data.content);
+          kittVoice.speak(data.content, detected.language as Language);
         }
       } else {
         const errMsg: Message = {
@@ -153,6 +157,11 @@ export default function Home() {
 
   useEffect(() => {
     if (transcript && !isListening) {
+      // Detectar idioma da transcrição de voz
+      const detected = detectLanguageFromText(transcript);
+      if (detected.confidence > 0.2) {
+        kittVoice.setLanguage(detected.language as Language);
+      }
       handleSend(transcript);
       resetTranscript();
       setTimeout(() => {
@@ -314,6 +323,42 @@ export default function Home() {
                   <span className="hidden sm:inline">STOP</span>
                 </button>
               )}
+
+              {/* Language selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                  className="hidden md:flex items-center gap-1 rounded border font-mono transition-all px-3 py-1.5 text-xs border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20"
+                  title="Selecionar idioma"
+                >
+                  <Globe size={12} />
+                  <span>{kittVoice.currentLanguage.split("-")[0].toUpperCase()}</span>
+                </button>
+                {showLanguageMenu && (
+                  <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-cyan-400/50 rounded shadow-lg z-50">
+                    {(["pt-BR", "pt-PT", "en-US", "en-GB", "es-ES"] as Language[]).map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => {
+                          kittVoice.setLanguage(lang);
+                          setShowLanguageMenu(false);
+                        }}
+                        className={`block w-full text-left px-4 py-2 font-mono text-xs transition-all ${
+                          kittVoice.currentLanguage === lang
+                            ? "bg-cyan-400/20 text-cyan-300"
+                            : "text-cyan-400/60 hover:bg-cyan-400/10"
+                        }`}
+                      >
+                        {lang === "pt-BR" && "🇧🇷 Português (BR)"}
+                        {lang === "pt-PT" && "🇵🇹 Português (PT)"}
+                        {lang === "en-US" && "🇺🇸 English (US)"}
+                        {lang === "en-GB" && "🇬🇧 English (GB)"}
+                        {lang === "es-ES" && "🇪🇸 Español"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Speech rate control — hidden no mobile */}
               {voiceEnabled && (
