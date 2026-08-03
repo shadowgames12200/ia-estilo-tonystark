@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "outDir": "./dist/vercel",
+    "rootDir": ".",
+    "jsx": "react-jsx"
+  },
+  "include": ["api/**/*.ts", "server/**/*.ts"],
+  "exclude": ["node_modules"]
+}

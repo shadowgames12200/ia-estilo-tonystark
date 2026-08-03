@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch server/_core/index.ts",
-    "build": "tsc -p tsconfig.server.json && vite build",
+    "build": "tsc -p tsconfig.server.json && tsc -p tsconfig.vercel.json && vite build",
     "start": "node dist/server/_core/index.js",
     "client": "vite",
     "server": "tsx watch server/_core/index.ts",
@@ -29,6 +29,7 @@
     "@trpc/client": "^11.6.0",
     "@trpc/react-query": "^11.6.0",
     "@trpc/server": "^11.6.0",
+    "@vercel/node": "^3.0.28",
     "axios": "^1.12.0",
     "better-sqlite3": "^11.10.0",
     "class-variance-authority": "^0.7.1",
