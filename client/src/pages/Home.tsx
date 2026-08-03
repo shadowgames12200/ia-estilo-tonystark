@@ -21,7 +21,6 @@ const SUGGESTED_PROMPTS = [
   "What is the status of the Mark L armor?",
 ];
 
-// Detectar tipo de dispositivo automaticamente
 function useDeviceType() {
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
@@ -59,10 +58,10 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Usar o novo hook KITT Voice
-  const kittVoice = useKITTVoice();
+  // Ref para saber se a IA está falando (para interrupção)
+  const aiSpeakingRef = useRef(false);
 
-  // Detectar dispositivo automaticamente
+  const kittVoice = useKITTVoice();
   const { isMobile, isTablet, isDesktop } = useDeviceType();
 
   // Streaming chat with voice
@@ -77,52 +76,50 @@ export default function Home() {
     stopStream,
     resetStreaming,
   } = useStreamingChatWithVoice(
-    // onSpeak callback — called when enough text is accumulated to speak
+    // onSpeak callback — fala cada pedaço enquanto o streaming gera
     (text, config) => {
       if (voiceEnabled) {
-        // Pausar escuta enquanto IA fala (para não ouvir a si mesma)
-        if (isListening) pauseListening();
+        aiSpeakingRef.current = true;
         kittVoice.speak(text, undefined);
       }
     },
     kittVoice.config
   );
 
-  // Determine if we're loading/processing
   const isLoading = isStreaming || isThinking;
-
-  // Build the message array for display: existing messages + streaming content
   const displayMessages = messages;
   const hasActiveStream = isStreaming || isThinking;
 
+  // ─── LÓGICA DE INTERRUPÇÃO ───
+  // Quando a IA está falando E o usuário fala, a IA para e ouve
+
+  const handleInterruption = useCallback(() => {
+    // 1. Para a fala da IA imediatamente
+    kittVoice.stop();
+    aiSpeakingRef.current = false;
+
+    // 2. Para o streaming atual (se houver)
+    if (isStreaming || isThinking) {
+      stopStream();
+    }
+  }, [kittVoice, isStreaming, isThinking, stopStream]);
+
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
-      // Pausar escuta (a IA vai falar agora)
-      if (isListening) pauseListening();
-
-      // Stop any ongoing speech
+      // Para qualquer fala anterior
       kittVoice.stop();
+      aiSpeakingRef.current = false;
 
       // Start streaming
       const result = await streamChat(msgs);
 
-      // Retomar escuta após IA terminar
-      if (voiceEnabled) {
-        // Esperar a voz terminar antes de voltar a ouvir
-        const waitForSpeech = () => {
-          if (kittVoice.isSpeaking) {
-            setTimeout(waitForSpeech, 500);
-          } else {
-            setTimeout(() => resumeListening(), 300);
-          }
-        };
-        setTimeout(waitForSpeech, 500);
-      } else {
-        setTimeout(() => resumeListening(), 300);
+      // Quando terminar, marcar que IA não está mais falando
+      // (a voz pode continuar um pouco depois)
+      if (!voiceEnabled) {
+        aiSpeakingRef.current = false;
       }
 
       if (result) {
-        // Add the complete assistant message to history
         const assistantMsg: Message = {
           role: "assistant",
           content: result,
@@ -136,7 +133,6 @@ export default function Home() {
           return next;
         });
       } else if (!result && !streamError) {
-        // Stream was stopped or empty
         if (streamingContent) {
           const assistantMsg: Message = {
             role: "assistant",
@@ -163,15 +159,19 @@ export default function Home() {
     isSupported: isSpeechSupported,
     startListening,
     stopListening,
-    pauseListening,
-    resumeListening,
     resetTranscript,
   } = useSpeechRecognition();
 
   const handleSend = useCallback(
     (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed) return;
+
+      // Se a IA está falando ou pensando, INTERROMPE
+      if (aiSpeakingRef.current || isStreaming || isThinking) {
+        handleInterruption();
+      }
+
       const userMsg: Message = {
         role: "user",
         content: trimmed,
@@ -183,17 +183,13 @@ export default function Home() {
         sessionStorage.setItem("jarvis-history", JSON.stringify(newMessages));
       } catch { /* ignore */ }
       setInput("");
-      kittVoice.stop();
 
-      // Clear streaming content for new message
-      resetStreaming();
-
-      // Small delay to let UI update before streaming starts
+      // Pequeno delay para a interrupção ser processada antes de enviar
       setTimeout(() => {
         sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
-      }, 50);
+      }, 100);
     },
-    [messages, isLoading, sendChat, kittVoice, resetStreaming]
+    [messages, isStreaming, isThinking, sendChat, handleInterruption]
   );
 
   const handleMicClick = useCallback(() => {
@@ -205,20 +201,32 @@ export default function Home() {
     }
   }, [isListening, startListening, stopListening, resetTranscript]);
 
+  // Quando o microfone detecta fala final → processa como interrupção/envio
   useEffect(() => {
     if (transcript && !isListening) {
-      // Detectar idioma da transcrição de voz
+      // Detectar idioma
       const detected = detectLanguageFromText(transcript);
       if (detected.confidence > 0.2) {
         kittVoice.setLanguage(detected.language as Language);
       }
-      handleSend(transcript);
+
+      // Se a IA estava falando, isso é uma interrupção
+      if (aiSpeakingRef.current) {
+        handleInterruption();
+      }
+
+      // Se não está carregando, pode enviar
+      if (!isLoading) {
+        handleSend(transcript);
+      } else {
+        // IA está processando — interrompe e reenvia
+        handleInterruption();
+        setTimeout(() => handleSend(transcript), 200);
+      }
+
       resetTranscript();
-      setTimeout(() => {
-        startListening();
-      }, 500);
     }
-  }, [transcript, isListening, handleSend, resetTranscript, startListening]);
+  }, [transcript, isListening, handleSend, resetTranscript]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -231,7 +239,13 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking, isStreaming, streamingContent]);
 
-  // Auto-orientar: quando estiver no mobile, o painel HUD fica oculto por padrão
+  // Monitorar quando a voz termina para voltar a ouvir
+  useEffect(() => {
+    if (voiceEnabled && !kittVoice.isSpeaking && aiSpeakingRef.current) {
+      aiSpeakingRef.current = false;
+    }
+  }, [kittVoice.isSpeaking, voiceEnabled]);
+
   const showLeftPanel = isDesktop || isTablet;
 
   const formatTime = (d: Date) =>
@@ -277,7 +291,6 @@ export default function Home() {
           {/* ===== HEADER ===== */}
           <header className={`flex items-center justify-between border-b border-cyan-400/20 ${isMobile ? "py-2" : "py-3"}`}>
             <div className="flex items-center gap-2">
-              {/* Arc reactor icon */}
               <div className={`relative flex items-center justify-center ${isMobile ? "w-7 h-7" : "w-10 h-10"}`}>
                 <div className={`absolute rounded-full border border-cyan-400/40 animate-spin-slow ${isMobile ? "w-7 h-7" : "w-10 h-10"}`} />
                 <div className={`absolute rounded-full border border-cyan-400/30 animate-spin-reverse ${isMobile ? "w-5 h-5" : "w-7 h-7"}`} />
@@ -324,7 +337,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Mobile: indicador de status mini */}
               {isMobile && (
                 <div className="flex items-center gap-1">
                   <div className={`w-2 h-2 rounded-full ${
@@ -366,6 +378,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   if (kittVoice.isSpeaking) kittVoice.stop();
+                  aiSpeakingRef.current = false;
                   setVoiceEnabled((v) => !v);
                 }}
                 className={`flex items-center gap-1 rounded border font-mono transition-all ${
@@ -380,11 +393,11 @@ export default function Home() {
                 <span className="hidden sm:inline">{voiceEnabled ? "VOICE ON" : "VOICE OFF"}</span>
               </button>
 
-              {/* Stop speaking/streaming */}
+              {/* Stop button */}
               {(kittVoice.isSpeaking || isStreaming) && (
                 <button
                   onClick={() => {
-                    stopStream();
+                    handleInterruption();
                     kittVoice.stop();
                   }}
                   className="flex items-center gap-1 px-2 py-1 rounded border border-amber-400/50 text-amber-300 bg-amber-400/10 font-mono text-[10px] animate-pulse-glow"
@@ -444,7 +457,7 @@ export default function Home() {
                 className="flex-1 overflow-y-auto space-y-3 pr-1 scrollbar-thin scrollbar-thumb-cyan-400/20 scrollbar-track-transparent"
                 style={{ scrollbarWidth: "thin", scrollbarColor: "oklch(0.78 0.18 200 / 0.2) transparent" }}
               >
-                {/* Welcome message when no messages */}
+                {/* Welcome */}
                 {messages.length === 0 && !hasActiveStream && (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 relative mb-6">
@@ -475,7 +488,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Rendered messages */}
+                {/* Messages */}
                 {displayMessages.map((msg, i) => (
                   <div
                     key={i}
@@ -522,7 +535,7 @@ export default function Home() {
                   </div>
                 ))}
 
-                {/* Streaming/Thinking indicator */}
+                {/* Streaming indicator */}
                 {hasActiveStream && (
                   <div className="flex gap-2 sm:gap-3 justify-start">
                     <div className="shrink-0 mt-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-cyan-400/50 flex items-center justify-center glow-cyan animate-pulse-glow">
@@ -575,14 +588,17 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Voice interjection indicator */}
+                {/* Voice speaking indicator */}
                 {kittVoice.isSpeaking && !isStreaming && (
                   <div className="flex justify-start pl-8">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-400/10 border border-cyan-400/30 animate-pulse-glow">
                       <Volume size={12} className="text-cyan-400/80" />
                       <span className="font-mono text-[10px] text-cyan-400/60">FALANDO...</span>
                       <button
-                        onClick={() => kittVoice.stop()}
+                        onClick={() => {
+                          handleInterruption();
+                          kittVoice.stop();
+                        }}
                         className="ml-1 text-amber-400/80 hover:text-amber-400 transition-colors"
                       >
                         <Power size={10} />
@@ -626,7 +642,7 @@ export default function Home() {
                 </div>
                 {isListening && (
                   <div className="mt-2 p-2 rounded border border-red-400/30 bg-red-400/5">
-                    <div className="font-mono text-[10px] text-red-400/60 mb-1">TRANSCREVENDO...</div>
+                    <div className="font-mono text-[10px] text-red-400/60 mb-1">OUVINDO...</div>
                     <div className="font-mono text-xs text-red-100/80">
                       {interimTranscript || transcript || "Aguardando fala..."}
                     </div>
@@ -645,7 +661,6 @@ export default function Home() {
               </button>
             )}
 
-            {/* Mobile HUD panel */}
             {isMobile && showPanel && (
               <div className="mt-2 space-y-3">
                 <div className="hud-panel hud-border rounded-lg p-3">
