@@ -1,223 +1,32 @@
-import { useRef, useCallback, useState, useEffect } from "react";
-import {
-  detectLanguageFromText,
-  selectBestVoiceForLanguage,
-  languageConfig,
-  type Language,
-} from "@/lib/languageDetector";
+import { useRef, useCallback, useState } from "react";
+import { type Language } from "@/lib/languageDetector";
 
 export interface KITTVoiceConfig {
-  rate: number; // 0.5 - 2.0
-  volume: number; // 0 - 1
-  pitch: number; // 0.5 - 2.0
+  rate: number;
+  volume: number;
+  pitch: number;
 }
 
 export function useKITTVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<Language>("pt-BR");
-  const [config, setConfig] = useState<KITTVoiceConfig>({
-    rate: 1.1, // Mais rápido para conversa fluida
+  const [config] = useState<KITTVoiceConfig>({
+    rate: 1.1,
     volume: 1,
-    pitch: 0.75, // Pitch mais grave para soar como JARVIS/Tony Stark
+    pitch: 0.75,
   });
 
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const oscillatorRef = useRef<OscillatorNode | null>(null);
-  const convolverRef = useRef<ConvolverNode | null>(null);
+  // Audio element para tocar o MP3 do ElevenLabs
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Fila de textos aguardando para serem falados
+  const queueRef = useRef<string[]>([]);
+  // Ref para controlar interrupção
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Inicializar Web Audio API para efeitos KITT aprimorados
-  const initializeAudioContext = useCallback(() => {
-    if (audioContextRef.current) return audioContextRef.current;
-
-    try {
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
-      audioContextRef.current = audioContext;
-
-      // Criar nós de áudio para processamento
-      const gainNode = audioContext.createGain();
-      const analyser = audioContext.createAnalyser();
-      const convolver = audioContext.createConvolver();
-
-      gainNode.connect(analyser);
-      analyser.connect(convolver);
-      convolver.connect(audioContext.destination);
-
-      gainNodeRef.current = gainNode;
-      analyserRef.current = analyser;
-      convolverRef.current = convolver;
-
-      // Criar impulse response para reverb metálico
-      const rate = audioContext.sampleRate;
-      const length = rate * 0.5; // 500ms de reverb
-      const impulseResponse = audioContext.createBuffer(2, length, rate);
-      const left = impulseResponse.getChannelData(0);
-      const right = impulseResponse.getChannelData(1);
-
-      for (let i = 0; i < length; i++) {
-        left[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-        right[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-      }
-
-      convolver.buffer = impulseResponse;
-
-      return audioContext;
-    } catch (error) {
-      console.error("Erro ao inicializar Web Audio API:", error);
-      return null;
-    }
-  }, []);
-
-  // Criar efeito de tom eletrônico KITT aprimorado (mais metálico)
-  const playKITTTone = useCallback(() => {
-    const audioContext = initializeAudioContext();
-    if (!audioContext) return;
-
-    try {
-      // Se já há um oscilador, parar
-      if (oscillatorRef.current) {
-        try {
-          oscillatorRef.current.stop();
-        } catch {
-          // Ignorar se já foi parado
-        }
-      }
-
-      // Criar múltiplos osciladores para efeito mais rico
-      const oscillators: OscillatorNode[] = [];
-      const gainNodes: GainNode[] = [];
-
-      // Frequências harmônicas para efeito metálico
-      const frequencies = [55, 110, 165]; // Tons fundamentais
-
-      frequencies.forEach((freq, index) => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.frequency.value = freq;
-        oscillator.type = index === 0 ? "sine" : "square";
-
-        // Envelope ADSR simplificado
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(
-          0.1 / (index + 1),
-          audioContext.currentTime + 0.05
-        );
-        gainNode.gain.linearRampToValueAtTime(
-          0.05 / (index + 1),
-          audioContext.currentTime + 0.15
-        );
-        gainNode.gain.linearRampToValueAtTime(
-          0,
-          audioContext.currentTime + 0.4
-        );
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContextRef.current?.destination);
-
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.4);
-
-        oscillators.push(oscillator);
-        gainNodes.push(gainNode);
-      });
-
-      oscillatorRef.current = oscillators[0];
-    } catch (error) {
-      console.error("Erro ao reproduzir tom KITT:", error);
-    }
-  }, [initializeAudioContext]);
-
-  // Detectar idioma automaticamente
-  const detectAndSetLanguage = useCallback((text: string) => {
-    const detected = detectLanguageFromText(text);
-    if (detected.confidence > 0.2) {
-      setCurrentLanguage(detected.language);
-      // Atualizar config de acordo com o idioma
-      const langConfig = languageConfig[detected.language];
-      setConfig((prev) => ({
-        ...prev,
-        rate: langConfig.rate,
-        pitch: langConfig.pitch,
-      }));
-    }
-  }, []);
-
-  // Falar com voz KITT
+  // Falar usando ElevenLabs TTS
   const speak = useCallback(
-    (text: string, forceLanguage?: Language) => {
-      if (!("speechSynthesis" in window)) {
-        console.error("Speech Synthesis não suportado");
-        return;
-      }
-
-      // Detectar idioma se não foi forçado
-      if (!forceLanguage) {
-        detectAndSetLanguage(text);
-      } else {
-        setCurrentLanguage(forceLanguage);
-        const langConfig = languageConfig[forceLanguage];
-        setConfig((prev) => ({
-          ...prev,
-          rate: langConfig.rate,
-          pitch: langConfig.pitch,
-        }));
-      }
-
-      // Se já está falando, NÃO cancelar — deixar a fila natural (conversa fluida)
-      // Só cancela quando o usuário manda parar manualmente
-      if (isSpeaking) {
-        // Adiciona na fila sem interromper o que está falando
-        const cleanText = text
-          .replace(/\*\*(.*?)\*\*/g, "$1")
-          .replace(/\*(.*?)\*/g, "$1")
-          .replace(/`(.*?)`/g, "$1")
-          .replace(/#{1,6}\s/g, "")
-          .replace(/\n/g, " ")
-          .trim();
-
-        if (!cleanText) return;
-
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.onvoiceschanged = () => {
-            speak(text, forceLanguage);
-          };
-          return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        const language = forceLanguage || currentLanguage;
-        const selectedVoice = selectBestVoiceForLanguage(language);
-
-        if (selectedVoice) {
-          utterance.voice = selectedVoice;
-          utterance.lang = selectedVoice.lang;
-        } else {
-          utterance.lang = language;
-        }
-
-        utterance.rate = config.rate;
-        utterance.pitch = config.pitch;
-        utterance.volume = config.volume;
-
-        utterance.onend = () => {
-          setIsSpeaking(false);
-        };
-
-        utterance.onerror = (event) => {
-          console.error("Erro na síntese de fala:", event.error);
-          setIsSpeaking(false);
-        };
-
-        window.speechSynthesis.speak(utterance);
-        return;
-      }
-
-      // Cancelar fala anterior apenas se NÃO está falando
-      window.speechSynthesis.cancel();
+    async (text: string, _forceLanguage?: Language) => {
+      if (!text) return;
 
       // Limpar texto de markdown
       const cleanText = text
@@ -230,112 +39,178 @@ export function useKITTVoice() {
 
       if (!cleanText) return;
 
-      // Aguardar vozes carregarem
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          speak(text, forceLanguage);
-        };
+      // Se já está falando, adicionar na fila
+      if (isSpeaking) {
+        queueRef.current.push(cleanText);
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(cleanText);
+      setIsSpeaking(true);
 
-      // Selecionar melhor voz para o idioma
-      const language = forceLanguage || currentLanguage;
-      const selectedVoice = selectBestVoiceForLanguage(language);
+      try {
+        // Abortar qualquer requisição anterior
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
 
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        utterance.lang = selectedVoice.lang;
-      } else {
-        utterance.lang = language;
+        // Chamar a API de TTS do ElevenLabs
+        const response = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: cleanText }),
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error("ElevenLabs TTS error:", errorData);
+          setIsSpeaking(false);
+          processQueue();
+          return;
+        }
+
+        // Receber o áudio como blob
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Criar elemento de áudio e tocar
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        audio.onplay = () => {
+          setIsSpeaking(true);
+        };
+
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          setIsSpeaking(false);
+          // Processar o próximo da fila
+          processQueue();
+        };
+
+        audio.onerror = () => {
+          console.error("Erro ao tocar áudio ElevenLabs");
+          setIsSpeaking(false);
+          processQueue();
+        };
+
+        audio.play().catch((err) => {
+          console.error("Erro ao reproduzir:", err);
+          setIsSpeaking(false);
+          processQueue();
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          // Foi interrompido pelo usuário — normal
+          setIsSpeaking(false);
+          return;
+        }
+        console.error("Erro no TTS:", error);
+        setIsSpeaking(false);
+        processQueue();
+      }
+    },
+    [isSpeaking]
+  );
+
+  // Processar fila de textos
+  const processQueue = useCallback(() => {
+    if (queueRef.current.length > 0) {
+      const next = queueRef.current.shift()!;
+      // Usar setTimeout para não travar o React
+      setTimeout(() => {
+        setIsSpeaking(true);
+        // Chamar speak diretamente (sem passar por useCallback)
+        speakDirect(next);
+      }, 100);
+    }
+  }, []);
+
+  // Speak direto (para a fila)
+  const speakDirect = useCallback(async (text: string) => {
+    try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        setIsSpeaking(false);
+        processQueue();
+        return;
       }
 
-      // Aplicar configurações KITT
-      utterance.rate = config.rate;
-      utterance.pitch = config.pitch;
-      utterance.volume = config.volume;
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
 
-      // Eventos de fala
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        playKITTTone(); // Som inicial KITT
-      };
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
 
-      utterance.onend = () => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
         setIsSpeaking(false);
+        processQueue();
       };
 
-      utterance.onerror = (event) => {
-        console.error("Erro na síntese de fala:", event.error);
+      audio.onerror = () => {
         setIsSpeaking(false);
+        processQueue();
       };
 
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-    },
-    [config, playKITTTone, currentLanguage, detectAndSetLanguage, isSpeaking]
-  );
+      await audio.play();
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        setIsSpeaking(false);
+        return;
+      }
+      console.error("Erro speakDirect:", error);
+      setIsSpeaking(false);
+      processQueue();
+    }
+  }, [processQueue]);
 
   // Parar de falar
   const stop = useCallback(() => {
-    window.speechSynthesis?.cancel();
+    // Abortar requisição em andamento
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    // Parar áudio atual
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // Limpar fila
+    queueRef.current = [];
     setIsSpeaking(false);
   }, []);
 
-  // Atualizar configuração de voz
-  const updateConfig = useCallback(
-    (updates: Partial<KITTVoiceConfig>) => {
-      setConfig((prev) => ({
-        ...prev,
-        ...updates,
-      }));
-    },
-    []
-  );
-
-  // Aumentar velocidade
-  const increaseSpeed = useCallback(() => {
-    setConfig((prev) => ({
-      ...prev,
-      rate: Math.min(2.0, prev.rate + 0.1),
-    }));
+  const updateConfig = useCallback((updates: Partial<KITTVoiceConfig>) => {
+    // Configs de rate/pitch não se aplicam ao ElevenLabs
   }, []);
 
-  // Diminuir velocidade
-  const decreaseSpeed = useCallback(() => {
-    setConfig((prev) => ({
-      ...prev,
-      rate: Math.max(0.5, prev.rate - 0.1),
-    }));
-  }, []);
+  const increaseSpeed = useCallback(() => {}, []);
+  const decreaseSpeed = useCallback(() => {}, []);
+  const increaseVolume = useCallback(() => {}, []);
+  const decreaseVolume = useCallback(() => {}, []);
 
-  // Aumentar volume
-  const increaseVolume = useCallback(() => {
-    setConfig((prev) => ({
-      ...prev,
-      volume: Math.min(1, prev.volume + 0.1),
-    }));
-  }, []);
-
-  // Diminuir volume
-  const decreaseVolume = useCallback(() => {
-    setConfig((prev) => ({
-      ...prev,
-      volume: Math.max(0, prev.volume - 0.1),
-    }));
-  }, []);
-
-  // Mudar idioma manualmente
   const setLanguage = useCallback((language: Language) => {
-    console.log(`[KITTVoice] Mudando idioma para: ${language}`);
     setCurrentLanguage(language);
-    const langConfig = languageConfig[language];
-    setConfig((prev) => ({
-      ...prev,
-      rate: langConfig.rate,
-      pitch: langConfig.pitch,
-    }));
+  }, []);
+
+  const detectAndSetLanguage = useCallback((_text: string) => {
+    // O ElevenLabs detecta automaticamente, mas mantemos o estado
   }, []);
 
   return {

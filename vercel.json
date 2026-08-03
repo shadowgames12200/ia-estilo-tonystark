@@ -13,6 +13,14 @@
       "destination": "/api/chat-stream"
     },
     {
+      "source": "/api/tts",
+      "destination": "/api/tts"
+    },
+    {
+      "source": "/api/tts-stream",
+      "destination": "/api/tts-stream"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -22,6 +30,12 @@
       "maxDuration": 30
     },
     "api/chat.ts": {
+      "maxDuration": 30
+    },
+    "api/tts.ts": {
+      "maxDuration": 30
+    },
+    "api/tts-stream.ts": {
       "maxDuration": 30
     }
   }

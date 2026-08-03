@@ -178,7 +178,7 @@ export function useStreamingChatWithVoice(
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
     }
-    window.speechSynthesis?.cancel();
+    // Não usa mais speechSynthesis — ElevenLabs gerencia a própria parada
     setIsStreaming(false);
     setIsThinking(false);
     setCurrentTool(null);
