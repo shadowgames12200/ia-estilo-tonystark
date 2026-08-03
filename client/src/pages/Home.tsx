@@ -107,7 +107,7 @@ export default function Home() {
       };
       setMessages((prev) => [...prev, errMsg]);
     }
-  }, [voiceEnabled, speakText]);
+  }, [voiceEnabled]);
 
   const speakText = useCallback((text: string) => {
     if (!("speechSynthesis" in window)) return;
