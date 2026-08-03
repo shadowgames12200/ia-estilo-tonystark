@@ -18,7 +18,7 @@ export function useKITTVoice() {
   const [config, setConfig] = useState<KITTVoiceConfig>({
     rate: 0.9,
     volume: 1,
-    pitch: 0.8,
+    pitch: 0.85, // Pitch levemente mais alto para PT-BR soar melhor
   });
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
