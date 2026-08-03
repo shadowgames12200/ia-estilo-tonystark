@@ -167,9 +167,9 @@ export const languageConfig: Record<
   Language,
   { rate: number; pitch: number; volume: number }
 > = {
-  "pt-BR": { rate: 0.9, pitch: 0.85, volume: 1 },
-  "pt-PT": { rate: 0.85, pitch: 0.8, volume: 1 },
-  "en-US": { rate: 0.9, pitch: 0.8, volume: 1 },
-  "en-GB": { rate: 0.85, pitch: 0.75, volume: 1 },
-  "es-ES": { rate: 0.9, pitch: 0.85, volume: 1 },
+  "pt-BR": { rate: 1.05, pitch: 0.75, volume: 1 },
+  "pt-PT": { rate: 1.0, pitch: 0.7, volume: 1 },
+  "en-US": { rate: 1.05, pitch: 0.75, volume: 1 },
+  "en-GB": { rate: 1.0, pitch: 0.7, volume: 1 },
+  "es-ES": { rate: 1.05, pitch: 0.75, volume: 1 },
 };

@@ -33,6 +33,8 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
+  // Flag para saber se a IA está falando (para não ouvir a si mesma)
+  const isAiSpeakingRef = useRef(false);
 
   useEffect(() => {
     const SpeechRecognition =
@@ -43,9 +45,12 @@ export function useSpeechRecognition() {
       recognitionRef.current = new SpeechRecognition();
       const recognition = recognitionRef.current;
 
+      // continuous: false = para de ouvir quando detecta silêncio (melhor para turn-taking)
       recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = "pt-BR";
+      // Ajustar para reconhecer mais rápido - detectar silêncio mais cedo
+      // Interim results help with faster detection
 
       recognition.onstart = () => {
         setIsListening(true);
@@ -55,6 +60,9 @@ export function useSpeechRecognition() {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
+        // Se a IA está falando, ignorar resultados (não ouvir a si mesma)
+        if (isAiSpeakingRef.current) return;
+
         let interim = "";
         let final = "";
 
@@ -108,7 +116,12 @@ export function useSpeechRecognition() {
       setInterimTranscript("");
       setError(null);
       shouldRestartRef.current = true;
-      recognitionRef.current.start();
+      isAiSpeakingRef.current = false;
+      try {
+        recognitionRef.current.start();
+      } catch {
+        // Already started
+      }
     }
   }, [isListening]);
 
@@ -116,6 +129,29 @@ export function useSpeechRecognition() {
     if (recognitionRef.current && isListening) {
       shouldRestartRef.current = false;
       recognitionRef.current.stop();
+    }
+  }, [isListening]);
+
+  const pauseListening = useCallback(() => {
+    // Pausar escuta sem parar o auto-restart (IA está falando)
+    shouldRestartRef.current = true;
+    isAiSpeakingRef.current = true;
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+    }
+  }, [isListening]);
+
+  const resumeListening = useCallback(() => {
+    // Retomar escuta após IA terminar de falar
+    isAiSpeakingRef.current = false;
+    if (shouldRestartRef.current && !isListening && recognitionRef.current) {
+      setTimeout(() => {
+        try {
+          recognitionRef.current.start();
+        } catch {
+          // Already started
+        }
+      }, 300);
     }
   }, [isListening]);
 
@@ -133,6 +169,8 @@ export function useSpeechRecognition() {
     error,
     startListening,
     stopListening,
+    pauseListening,
+    resumeListening,
     resetTranscript,
   };
 }

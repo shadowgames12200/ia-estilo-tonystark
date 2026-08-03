@@ -95,10 +95,11 @@ export function useStreamingChatWithVoice(
                       setStreamingContent(accumulatedText);
 
                       // Speak chunks when they form complete sentences or reach length threshold
+                      // Reduzido para falar mais rápido (como no vídeo do Raphael)
                       const sb = sentenceBufferRef.current;
                       if (
                         sb.match(/[.!?]\s*$/) ||
-                        sb.length > 120
+                        sb.length > 80
                       ) {
                         const textToSpeak = sb.trim();
                         if (textToSpeak) {

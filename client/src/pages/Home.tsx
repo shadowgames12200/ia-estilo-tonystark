@@ -80,6 +80,8 @@ export default function Home() {
     // onSpeak callback — called when enough text is accumulated to speak
     (text, config) => {
       if (voiceEnabled) {
+        // Pausar escuta enquanto IA fala (para não ouvir a si mesma)
+        if (isListening) pauseListening();
         kittVoice.speak(text, undefined);
       }
     },
@@ -95,11 +97,29 @@ export default function Home() {
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
+      // Pausar escuta (a IA vai falar agora)
+      if (isListening) pauseListening();
+
       // Stop any ongoing speech
       kittVoice.stop();
 
       // Start streaming
       const result = await streamChat(msgs);
+
+      // Retomar escuta após IA terminar
+      if (voiceEnabled) {
+        // Esperar a voz terminar antes de voltar a ouvir
+        const waitForSpeech = () => {
+          if (kittVoice.isSpeaking) {
+            setTimeout(waitForSpeech, 500);
+          } else {
+            setTimeout(() => resumeListening(), 300);
+          }
+        };
+        setTimeout(waitForSpeech, 500);
+      } else {
+        setTimeout(() => resumeListening(), 300);
+      }
 
       if (result) {
         // Add the complete assistant message to history
@@ -143,6 +163,8 @@ export default function Home() {
     isSupported: isSpeechSupported,
     startListening,
     stopListening,
+    pauseListening,
+    resumeListening,
     resetTranscript,
   } = useSpeechRecognition();
 

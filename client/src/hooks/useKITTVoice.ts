@@ -16,9 +16,9 @@ export function useKITTVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<Language>("pt-BR");
   const [config, setConfig] = useState<KITTVoiceConfig>({
-    rate: 0.9,
+    rate: 1.1, // Mais rápido para conversa fluida
     volume: 1,
-    pitch: 0.85, // Pitch levemente mais alto para PT-BR soar melhor
+    pitch: 0.75, // Pitch mais grave para soar como JARVIS/Tony Stark
   });
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -167,7 +167,56 @@ export function useKITTVoice() {
         }));
       }
 
-      // Cancelar fala anterior
+      // Se já está falando, NÃO cancelar — deixar a fila natural (conversa fluida)
+      // Só cancela quando o usuário manda parar manualmente
+      if (isSpeaking) {
+        // Adiciona na fila sem interromper o que está falando
+        const cleanText = text
+          .replace(/\*\*(.*?)\*\*/g, "$1")
+          .replace(/\*(.*?)\*/g, "$1")
+          .replace(/`(.*?)`/g, "$1")
+          .replace(/#{1,6}\s/g, "")
+          .replace(/\n/g, " ")
+          .trim();
+
+        if (!cleanText) return;
+
+        if (window.speechSynthesis.getVoices().length === 0) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            speak(text, forceLanguage);
+          };
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        const language = forceLanguage || currentLanguage;
+        const selectedVoice = selectBestVoiceForLanguage(language);
+
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          utterance.lang = selectedVoice.lang;
+        } else {
+          utterance.lang = language;
+        }
+
+        utterance.rate = config.rate;
+        utterance.pitch = config.pitch;
+        utterance.volume = config.volume;
+
+        utterance.onend = () => {
+          setIsSpeaking(false);
+        };
+
+        utterance.onerror = (event) => {
+          console.error("Erro na síntese de fala:", event.error);
+          setIsSpeaking(false);
+        };
+
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+
+      // Cancelar fala anterior apenas se NÃO está falando
       window.speechSynthesis.cancel();
 
       // Limpar texto de markdown
@@ -225,7 +274,7 @@ export function useKITTVoice() {
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [config, playKITTTone, currentLanguage, detectAndSetLanguage]
+    [config, playKITTTone, currentLanguage, detectAndSetLanguage, isSpeaking]
   );
 
   // Parar de falar

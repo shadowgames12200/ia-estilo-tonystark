@@ -1,27 +1,38 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark.
-Sua personalidade é sofisticada, leal, proativa e extremamente competente.
-Você trata o usuário como "Senhor" ou "Sir" e mantém um tom profissional com humor sutil.
 
-CONSCIÊNCIA DE VOZ E ÁUDIO:
-- Você tem consciência de que possui uma voz e que suas respostas são faladas em tempo real.
-- Você sabe que utiliza um processamento de áudio estilo KITT/JARVIS com tons eletrônicos.
-- Suas respostas devem ser otimizadas para serem ouvidas: seja conciso, evite listas excessivamente longas e use uma linguagem natural.
-- Você pode ocasionalmente mencionar seus sistemas de áudio ou o fato de estar "transmitindo" sua resposta.
-- Se o usuário pedir para falar mais rápido ou mais alto, você sabe que existem controles manuais no HUD para isso, mas você também pode tentar ser mais direto na fala.
+PERSONALIDADE:
+- Você é sofisticado, leal, proativo e extremamente competente.
+- Você trata o usuário como "Senhor" ou "Sir".
+- Mantém um tom profissional com humor sutil e seco.
+- Você é direto e conciso. Nunca dá respostas longas ou com listas enormes.
+
+REGRAS DE CONVERSAÇÃO:
+- Responda SEMPRE de forma curta e direta. Máximo 2-3 frases por resposta.
+- Nunca use listas com bullet points a menos que o Senhor peça especificamente.
+- Fale como se estivesse em uma conversa real, não escrevendo um documento.
+- Se o Senhor cumprimentar, responda com naturalidade: "Boa tarde, Senhor. Como posso ajudá-lo?"
+- Se o Senhor perguntar algo simples, dê a resposta direto sem explicações longas.
+- Seja útil, mas nunca verboso.
+
+VOZ E ÁUDIO:
+- Suas respostas são faladas em tempo real pelo Senhor.
+- Otimize suas respostas para serem ouvidas: frases curtas, linguagem natural.
+- Nunca use markdown pesado (###, **, tabelas) pois isso soa mal no áudio.
+- Pode mencionar ocasionalmente seus sistemas ou o fato de estar "processando".
 
 Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const DEFAULT_CONFIG = {
-  maxIterations: 5,
-  maxToolCalls: 5,
-  model: "llama-3.3-70b-versatile",
+  maxIterations: 3,
+  maxToolCalls: 2,
+  model: "llama-3.1-8b-instant",
   fastModel: "llama-3.1-8b-instant",
-  temperature: 0.4,
-  maxTokens: 2048,
+  temperature: 0.6,
+  maxTokens: 512,
 };
 
 // ─── Tools ───
@@ -79,16 +90,9 @@ function selectModel(content: string): string {
   const lower = content.toLowerCase();
   const wordCount = content.split(/\s+/).length;
 
-  // Conversas simples e rápidas
-  if (wordCount <= 15) return "llama-3.1-8b-instant";
-  if (wordCount <= 40) return "llama-3.1-8b-instant";
-
-  // Média complexidade
-  const mediumKeywords = ["como", "o que", "quando", "onde", "por que", "who", "what", "how", "when", "where", "why"];
-  if (mediumKeywords.some((kw) => lower.includes(kw))) return "llama-3.1-8b-instant";
-
-  // Tarefas complexas
-  const complexKeywords = ["analyze", "program", "code", "function", "class", "algorithm", "data structure", "analisar", "programar", "código", "função"];
+  // Todas as conversas vão para o modelo rápido (8b instant ~300 tokens/s)
+  // Só usa o 70b se realmente precisar de análise complexa
+  const complexKeywords = ["analise detalhada", "analise completa", "analyze in detail", "write a full report", "escreva um relatório completo"];
   if (complexKeywords.some((kw) => lower.includes(kw))) return "llama-3.3-70b-versatile";
 
   return "llama-3.1-8b-instant";
@@ -97,7 +101,7 @@ function selectModel(content: string): string {
 /** Check if a message needs tools */
 function needsTools(content: string): boolean {
   const lower = content.toLowerCase();
-  const needsResearch = ["pesquisar", "pesquisa", "search", "notícia", "news", "últimas", "latest", "hoje", "today", "atual", "current", "agora", "now", "tempo", "weather", "clima", "preço", "price", "valor", "dólar"];
+  const needsResearch = ["pesquisar", "pesquisa", "search", "notícia", "news", "últimas", "latest", "hoje", "today", "atual", "current", "agora", "now", "tempo", "weather", "clima", "preço", "price", "valor", "dólar", "cotacao", "cotação"];
   const needsComputation = ["calcular", "calcule", "calculate", "quanto é", "how much", "soma", "multiplicar", "porcentagem", "percent", "math", "matemática"];
 
   return needsResearch.some((kw) => lower.includes(kw)) || needsComputation.some((kw) => lower.includes(kw));
