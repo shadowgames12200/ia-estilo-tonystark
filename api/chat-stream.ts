@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { buildMemoryContext, extractAndSaveSemanticMemories } from "../server/_core/semantic-memory.js";
+import { getUserFromRequest } from "../server/_core/sdk.js"; // Precisamos de um userId para a memória
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark.
 
@@ -23,7 +25,11 @@ VOZ E ÁUDIO:
 - Nunca use markdown pesado (###, **, tabelas) pois isso soa mal no áudio.
 - Pode mencionar ocasionalmente seus sistemas ou o fato de estar "processando".
 
-Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
+Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.
+
+CAPACIDADES AVANÇADAS:
+- **Visão Computacional:** Você pode analisar imagens e documentos. Se o usuário enviar uma URL de imagem, você pode usar a ferramenta `analyze_image` para descrever o conteúdo ou extrair informações.
+- **Memória Semântica:** Você tem acesso a uma memória de longo prazo que armazena fatos importantes sobre o usuário e suas interações. Use essas memórias para fornecer respostas mais contextuais e personalizadas.`;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -340,6 +346,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { messages, config = {} } = req.body as {
+    userId?: number; // Adicionar userId ao corpo da requisição
+
     messages?: Array<{ role: string; content: string }>;
     config?: Record<string, unknown>;
   };
@@ -349,6 +357,13 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Necessário para embeddings
+
+  if (!OPENAI_API_KEY) {
+    console.error("[Chat Stream] OPENAI_API_KEY not configured for embeddings");
+    return res.status(500).json({ error: "OPENAI_API_KEY not configured for embeddings" });
+  }
+
   if (!GROQ_API_KEY) {
     console.error("[Chat Stream] GROQ_API_KEY not configured");
     return res.status(500).json({ error: "GROQ_API_KEY not configured" });
@@ -363,8 +378,17 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const cfg = { ...DEFAULT_CONFIG, ...config };
+    
+    // Tentar obter o userId do corpo da requisição ou de um mock
+    const currentUserId = req.body.userId || 1; // Usar 1 como userId padrão se não for fornecido
+
+    const lastUserMessageContent = messages.findLast(m => m.role === "user")?.content || "";
+    const memoryContext = await buildMemoryContext(currentUserId, lastUserMessageContent);
+
+    const systemPromptWithMemory = memoryContext ? `${SYSTEM_PROMPT}\n\n${memoryContext}` : SYSTEM_PROMPT;
+
     const conversationHistory: Message[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPromptWithMemory },
       ...messages.map((m) => ({
         role: m.role as "user" | "assistant" | "system",
         content: m.content,
@@ -500,6 +524,10 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
     // If we exhausted iterations without tool calls, end
     res.write(`data: ${JSON.stringify({ type: "done", content: fullResponse, model, iterations: cfg.maxIterations, toolCalls: toolCallCount })}\n\n`);
+
+    // Extrair e salvar novas memórias da conversa
+    await extractAndSaveSemanticMemories(currentUserId, conversationHistory);
+
     return res.end();
   } catch (error) {
     console.error("[Chat Stream] Error:", error);

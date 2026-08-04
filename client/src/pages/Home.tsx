@@ -277,7 +277,7 @@ export default function Home() {
       }
 
       setTimeout(() => {
-        sendChat(currentMessages.map((m) => ({ role: m.role, content: m.content })));
+        sendChat(currentMessages.map((m) => ({ role: m.role, content: m.content })), { userId: 1 }); // Passa userId fixo por enquanto
       }, 100);
     },
     [messages, isStreaming, isThinking, sendChat, handleInterruption]
