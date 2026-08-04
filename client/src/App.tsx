@@ -1,12 +1,10 @@
-import { Switch, Route } from "wouter";
-import Home from "./pages/Home";
-import NotFound from "./pages/NotFound";
+import React from "react";
 
 export default function App() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
+    <div style={{ color: 'cyan', fontFamily: 'monospace' }}>
+      <h2>SYSTEM OPERATIONAL</h2>
+      <p>Checking core modules...</p>
+    </div>
   );
 }
