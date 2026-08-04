@@ -26,7 +26,7 @@ interface SpeechRecognitionErrorEvent extends Event {
 }
 
 // Silêncio detectado (quando o usuário para de falar por X ms)
-const SILENCE_TIMEOUT_MS = 1500; // 1.5s de silêncio = "terminei de falar"
+const SILENCE_TIMEOUT_MS = 2500; // Aumentado para 2.5s para evitar cortes prematuros
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -81,9 +81,9 @@ export function useSpeechRecognition() {
         let interim = "";
         let final = "";
 
-        for (let i = event.results.length - 1; i >= 0; i--) {
+        // Process results in correct order (from 0 to length - 1)
+        for (let i = event.resultIndex; i < event.results.length; i++) {
           const t = event.results[i][0].transcript;
-
           if (event.results[i].isFinal) {
             final += t + " ";
           } else {

@@ -9,7 +9,7 @@
  * 5. Cache de Embeddings: Evita gerar embeddings repetidos para o mesmo texto
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "./supabaseClient.js";
 import { ENV } from "./env.js";
 
 // ─── Config ───
@@ -22,7 +22,7 @@ const MEMORY_PER_USER_LIMIT = 100; // Limite máximo de memórias por usuário
 
 // ─── Supabase Client ───
 
-const supabase = createClient(ENV.supabaseUrl, ENV.supabaseAnonKey);
+
 
 // ─── Types ───
 

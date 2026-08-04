@@ -3,7 +3,7 @@ import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { AutoImprovePanel } from "@/components/AutoImprovePanel";
 import { Streamdown } from "streamdown";
-import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap } from "lucide-react";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
@@ -58,6 +58,8 @@ export default function Home() {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Ref para saber se a IA está falando (para interrupção)
   const aiSpeakingRef = useRef(false);
@@ -210,26 +212,72 @@ export default function Home() {
   const handleSend = useCallback(
     (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
+
+      if (!trimmed && !selectedFile) return; // Não envia se não há texto nem arquivo
 
       if (aiSpeakingRef.current || isStreaming || isThinking) {
         handleInterruption();
       }
 
-      const userMsg: Message = {
-        role: "user",
-        content: trimmed,
-        timestamp: new Date(),
-      };
-      const newMessages = [...messages, userMsg];
-      setMessages(newMessages);
-      try {
-        sessionStorage.setItem("jarvis-history", JSON.stringify(newMessages));
-      } catch { /* ignore */ }
-      setInput("");
+      let currentMessages = [...messages];
+
+      if (selectedFile) {
+        // Lógica para upload de arquivo
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+
+        try {
+          const uploadResponse = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json();
+            alert(`Erro ao fazer upload do arquivo: ${errorData.details || uploadResponse.statusText}`);
+            setSelectedFile(null);
+            return;
+          }
+
+          const result = await uploadResponse.json();
+          const fileUrl = result.url;
+
+          const fileMessage: Message = {
+            role: "user",
+            content: `[Arquivo enviado: ${selectedFile.name}](${fileUrl})`,
+            timestamp: new Date(),
+          };
+          currentMessages = [...currentMessages, fileMessage];
+          setMessages(currentMessages);
+          try {
+            sessionStorage.setItem("jarvis-history", JSON.stringify(currentMessages));
+          } catch { /* ignore */ }
+          setSelectedFile(null);
+          alert(`Arquivo ${selectedFile.name} enviado com sucesso!`);
+        } catch (error) {
+          console.error("Erro no upload:", error);
+          alert("Erro ao fazer upload do arquivo.");
+          setSelectedFile(null);
+          return;
+        }
+      }
+
+      if (trimmed) {
+        const userMsg: Message = {
+          role: "user",
+          content: trimmed,
+          timestamp: new Date(),
+        };
+        currentMessages = [...currentMessages, userMsg];
+        setMessages(currentMessages);
+        try {
+          sessionStorage.setItem("jarvis-history", JSON.stringify(currentMessages));
+        } catch { /* ignore */ }
+        setInput("");
+      }
 
       setTimeout(() => {
-        sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
+        sendChat(currentMessages.map((m) => ({ role: m.role, content: m.content })));
       }, 100);
     },
     [messages, isStreaming, isThinking, sendChat, handleInterruption]
@@ -243,6 +291,15 @@ export default function Home() {
       startListening();
     }
   }, [isListening, startListening, stopListening, resetTranscript]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+      // Optionally, you can automatically send the file here or wait for user to click send
+      // For now, just set the file and let the user click send or type a message
+      alert(`Arquivo selecionado: ${e.target.files[0].name}`);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -598,6 +655,20 @@ export default function Home() {
                       style={{ fontFamily: "'Share Tech Mono', monospace" }}
                     />
                   </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="file-upload"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                    className={`flex items-center justify-center rounded border border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 hover:border-cyan-400/80 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 glow-cyan ${isMobile ? "px-3 py-2 text-[10px]" : "px-4 py-2 text-xs"}`}
+                  >
+                    <Upload size={10} />
+                  </button>
                   <button
                     onClick={() => handleSend(input)}
                     disabled={!input.trim() || isLoading}

@@ -9,7 +9,12 @@ export interface KITTVoiceConfig {
 
 export function useKITTVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<Language>("pt-BR");
+  const [currentLanguage, setCurrentLanguage] = useState<Language>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('jarvis-language') as Language) || 'pt-BR';
+    }
+    return 'pt-BR';
+  });
   const [config] = useState<KITTVoiceConfig>({
     rate: 1.1,
     volume: 1,
@@ -207,6 +212,9 @@ export function useKITTVoice() {
 
   const setLanguage = useCallback((language: Language) => {
     setCurrentLanguage(language);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jarvis-language', language);
+    }
   }, []);
 
   const detectAndSetLanguage = useCallback((_text: string) => {
