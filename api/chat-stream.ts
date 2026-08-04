@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { buildMemoryContext, extractAndSaveSemanticMemories } from "../server/_core/semantic-memory;
-import { API_CONFIG, getRandomKey } from "../server/_core/api-config;
+import { buildMemoryContext, extractAndSaveSemanticMemories } from "../server/_core/semantic-memory";
+import { API_CONFIG, getRandomKey } from "../server/_core/api-config";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark, adaptada para falar em português brasileiro.
 
@@ -94,7 +94,7 @@ type ToolCall = {
 // ─── Helpers ───
 async function handleToolCall(toolName: string, toolArgs: any): Promise<string> {
   if (toolName === "stark_system") {
-    const { starkTools } = await import("../server/_core/stark-module);
+    const { starkTools } = await import("../server/_core/stark-module");
     return await starkTools.execute(toolArgs);
   }
   
