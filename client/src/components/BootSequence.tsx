@@ -48,7 +48,7 @@ export function BootSequence({ onComplete }: BootSequenceProps) {
   return (
     <div
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-700 ${done ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-      style={{ background: "oklch(0.04 0.02 220)" }}
+      style={{ background: "#00050a" }}
     >
       {/* Animated rings */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

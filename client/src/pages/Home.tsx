@@ -256,8 +256,8 @@ export default function Home() {
   return (
     <>
       {!booted && <BootSequence onComplete={() => setBooted(true)} />}
-      <div className="min-h-screen w-full relative overflow-hidden scanlines" style={{ background: "oklch(0.05 0.02 220)" }}>
-        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px), linear-gradient(90deg, oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px)`, backgroundSize: isMobile ? "20px 20px" : "40px 40px" }} />
+      <div className="min-h-screen w-full relative overflow-hidden scanlines" style={{ background: "#000814" }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px)`, backgroundSize: isMobile ? "20px 20px" : "40px 40px" }} />
         
         <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-cyan-400/50 pointer-events-none" />
         <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-cyan-400/50 pointer-events-none" />
