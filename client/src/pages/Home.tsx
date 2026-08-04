@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { AutoImprovePanel } from "@/components/AutoImprovePanel";
+import { ArcReactor, type ArcReactorState } from "@/components/ArcReactor";
 import { Streamdown } from "streamdown";
 import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -94,6 +95,14 @@ export default function Home() {
     },
     kittVoice.config
   );
+
+  // ArcReactor state (depois de todos os hooks)
+  const reactorState: ArcReactorState = {
+    idle: !isListening && !isThinking && !isStreaming && !kittVoice.isSpeaking,
+    listening: isListening,
+    thinking: isThinking,
+    speaking: isStreaming || kittVoice.isSpeaking,
+  };
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
@@ -263,10 +272,13 @@ export default function Home() {
 
         <div className={`relative z-10 flex flex-col h-screen ${isMobile ? "px-2" : "max-w-7xl mx-auto px-4"}`}>
           <header className="flex items-center justify-between border-b border-cyan-400/20 py-3">
-            <div className="flex items-center gap-2">
-              <div className="relative flex items-center justify-center w-10 h-10">
-                <div className="absolute rounded-full border border-cyan-400/40 animate-spin-slow w-10 h-10" />
-                <div className="rounded-full bg-cyan-400/80 glow-cyan animate-pulse-glow w-4 h-4" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center">
+                <ArcReactor
+                  state={reactorState}
+                  onClick={handleMicClick}
+                  size={40}
+                />
               </div>
               <div>
                 <h1 className="font-black tracking-widest text-base text-cyan-300 text-glow-cyan" style={{ fontFamily: "'Orbitron', sans-serif" }}>J.A.R.V.I.S.</h1>
@@ -281,9 +293,7 @@ export default function Home() {
                   <span className="uppercase">{isThinking ? "Pensando" : isStreaming ? "Transmitindo" : isListening ? "Ouvindo" : "Online"}</span>
                 </div>
               </div>
-              <button onClick={handleMicClick} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${isListening ? "border-red-400/80 text-red-300 bg-red-400/20 animate-pulse" : "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20"}`}>
-                <Mic size={10} /> <span>{isListening ? "OUVINDO" : "MIC"}</span>
-              </button>
+
               <button onClick={() => { kittVoice.stop(); setVoiceEnabled(!voiceEnabled); if(voiceEnabled) stopListening(); }} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${voiceEnabled ? "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20" : "border-cyan-400/20 text-cyan-400/40"}`}>
                 {voiceEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
                 <span>{voiceEnabled ? "VOZ ATIVA" : "VOZ OFF"}</span>
@@ -304,11 +314,14 @@ export default function Home() {
             <div className="flex-1 flex flex-col min-w-0">
               <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                 {messages.length === 0 && !isThinking && !isStreaming && (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
-                    <div className="w-16 h-16 rounded-full border-2 border-cyan-400/30 flex items-center justify-center mb-4 animate-pulse">
-                      <Cpu className="text-cyan-400" size={32} />
-                    </div>
-                    <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                    <ArcReactor
+                      state={reactorState}
+                      onClick={handleMicClick}
+                      size={isMobile ? 120 : 160}
+                      className="mb-6 opacity-70"
+                    />
+                    <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2 mt-4" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
                     <p className="font-mono text-sm text-cyan-400/50 max-w-md">J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.</p>
                   </div>
                 )}
