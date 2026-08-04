@@ -3,7 +3,7 @@ import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { AutoImprovePanel } from "@/components/AutoImprovePanel";
 import { Streamdown } from "streamdown";
-import { Send, Volume2, VolumeX, Mic, Power, Loader, Volume, Globe, Cpu, Search, Zap } from "lucide-react";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
@@ -77,7 +77,6 @@ export default function Home() {
     stopStream,
     resetStreaming,
   } = useStreamingChatWithVoice(
-    // onSpeak callback — fala cada pedaço enquanto o streaming gera
     (text, config) => {
       if (voiceEnabled) {
         aiSpeakingRef.current = true;
@@ -91,15 +90,10 @@ export default function Home() {
   const displayMessages = messages;
   const hasActiveStream = isStreaming || isThinking;
 
-  // ─── LÓGICA DE INTERRUPÇÃO ───
-  // Quando a IA está falando E o usuário fala, a IA para e ouve
-
+  // ─── INTERRUPÇÃO ───
   const handleInterruption = useCallback(() => {
-    // 1. Para a fala da IA imediatamente
     kittVoice.stop();
     aiSpeakingRef.current = false;
-
-    // 2. Para o streaming atual (se houver)
     if (isStreaming || isThinking) {
       stopStream();
     }
@@ -107,15 +101,11 @@ export default function Home() {
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
-      // Para qualquer fala anterior
       kittVoice.stop();
       aiSpeakingRef.current = false;
 
-      // Start streaming
       const result = await streamChat(msgs);
 
-      // Quando terminar, marcar que IA não está mais falando
-      // (a voz pode continuar um pouco depois)
       if (!voiceEnabled) {
         aiSpeakingRef.current = false;
       }
@@ -158,17 +148,70 @@ export default function Home() {
     interimTranscript,
     isListening,
     isSupported: isSpeechSupported,
+    silenceDetected,
     startListening,
     stopListening,
     resetTranscript,
   } = useSpeechRecognition();
+
+  // ─── ENVIO AUTOMÁTICO POR SILENCE DETECTED ───
+  // Quando o silêncio é detectado (1.5s sem falar) → envia o que foi dito
+  const pendingTextRef = useRef<string>("");
+
+  // Acumula o texto enquanto a pessoa fala
+  useEffect(() => {
+    if (interimTranscript) {
+      // Se há texto interim, atualiza o ref com o texto completo
+      const fullText = transcript + interimTranscript;
+      if (fullText.trim().length > pendingTextRef.current.trim().length) {
+        pendingTextRef.current = fullText;
+      }
+    }
+  }, [interimTranscript, transcript]);
+
+  // Quando o silêncio é detectado → envia automaticamente
+  useEffect(() => {
+    if (silenceDetected && pendingTextRef.current.trim()) {
+      const text = pendingTextRef.current.trim();
+      pendingTextRef.current = ""; // Limpa para a próxima vez
+
+      // Detectar idioma
+      const detected = detectLanguageFromText(text);
+      if (detected.confidence > 0.2) {
+        kittVoice.setLanguage(detected.language as Language);
+      }
+
+      // Se a IA estava falando, isso é uma interrupção
+      if (aiSpeakingRef.current) {
+        handleInterruption();
+      }
+
+      const userMsg: Message = {
+        role: "user",
+        content: text,
+        timestamp: new Date(),
+      };
+      const newMessages = [...messages, userMsg];
+      setMessages(newMessages);
+      try {
+        sessionStorage.setItem("jarvis-history", JSON.stringify(newMessages));
+      } catch { /* ignore */ }
+
+      // Pequeno delay para interrupção ser processada
+      setTimeout(() => {
+        sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
+      }, 100);
+
+      // Limpa o transcript para a próxima vez
+      resetTranscript();
+    }
+  }, [silenceDetected]);
 
   const handleSend = useCallback(
     (content: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
 
-      // Se a IA está falando ou pensando, INTERROMPE
       if (aiSpeakingRef.current || isStreaming || isThinking) {
         handleInterruption();
       }
@@ -185,7 +228,6 @@ export default function Home() {
       } catch { /* ignore */ }
       setInput("");
 
-      // Pequeno delay para a interrupção ser processada antes de enviar
       setTimeout(() => {
         sendChat(newMessages.map((m) => ({ role: m.role, content: m.content })));
       }, 100);
@@ -201,33 +243,6 @@ export default function Home() {
       startListening();
     }
   }, [isListening, startListening, stopListening, resetTranscript]);
-
-  // Quando o microfone detecta fala final → processa como interrupção/envio
-  useEffect(() => {
-    if (transcript && !isListening) {
-      // Detectar idioma
-      const detected = detectLanguageFromText(transcript);
-      if (detected.confidence > 0.2) {
-        kittVoice.setLanguage(detected.language as Language);
-      }
-
-      // Se a IA estava falando, isso é uma interrupção
-      if (aiSpeakingRef.current) {
-        handleInterruption();
-      }
-
-      // Se não está carregando, pode enviar
-      if (!isLoading) {
-        handleSend(transcript);
-      } else {
-        // IA está processando — interrompe e reenvia
-        handleInterruption();
-        setTimeout(() => handleSend(transcript), 200);
-      }
-
-      resetTranscript();
-    }
-  }, [transcript, isListening, handleSend, resetTranscript]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -299,18 +314,18 @@ export default function Home() {
               </div>
               <div>
                 <h1
-                  className={`font-black tracking-widest text-cyan-300 text-glow-cyan ${isMobile ? "text-sm" : "text-xl"}`}
+                  className={`font-black tracking-widest ${isMobile ? "text-sm" : "text-base"} text-cyan-300 text-glow-cyan`}
                   style={{ fontFamily: "'Orbitron', sans-serif" }}
                 >
                   J.A.R.V.I.S.
                 </h1>
-                <p className={`tracking-widest text-cyan-400/50 font-mono ${isMobile ? "text-[9px]" : "text-xs"}`}>
-                  JUST A RATHER VERY INTELLIGENT SYSTEM
+                <p className="font-mono text-[9px] text-cyan-400/40 tracking-wider">
+                  STARK INDUSTRIES AI
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Status indicators */}
               <div className={`hidden md:flex items-center gap-4 font-mono text-xs`}>
                 <div className="flex items-center gap-1.5">
@@ -520,91 +535,45 @@ export default function Home() {
                         }`}
                       >
                         {msg.role === "assistant" ? (
-                          <div className="prose prose-sm max-w-none">
-                            <Streamdown>{msg.content}</Streamdown>
-                          </div>
+                          <Streamdown>{msg.content}</Streamdown>
                         ) : (
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          msg.content
                         )}
                       </div>
                     </div>
-
-                    {msg.role === "user" && (
-                      <div className="shrink-0 mt-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-amber-400/50 flex items-center justify-center">
-                        <Mic size={10} className="text-amber-400/80" />
-                      </div>
-                    )}
                   </div>
                 ))}
 
                 {/* Streaming indicator */}
-                {hasActiveStream && (
-                  <div className="flex gap-2 sm:gap-3 justify-start">
-                    <div className="shrink-0 mt-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-cyan-400/50 flex items-center justify-center glow-cyan animate-pulse-glow">
-                      <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-cyan-400/80" />
+                {isThinking && (
+                  <div className="flex gap-2 sm:gap-3">
+                    <div className="shrink-0 mt-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-amber-400/50 flex items-center justify-center">
+                      <Loader size={10} className="text-amber-400 animate-spin" />
                     </div>
-                    <div className="flex flex-col gap-1 max-w-[85%] sm:max-w-[80%]">
-                      <div className="flex items-center gap-1.5 sm:gap-2 font-mono text-[10px] sm:text-xs">
-                        <span className="text-cyan-400/50 tracking-widest">J.A.R.V.I.S.</span>
-                        <span className="text-cyan-400/25">{formatTime(new Date())}</span>
-                      </div>
-
-                      <div className="border border-cyan-400/25 bg-cyan-400/5 rounded px-3 sm:px-4 py-2 sm:py-3">
-                        {isThinking ? (
-                          <div className="flex items-center gap-1.5">
-                            <Loader size={12} className="animate-spin text-cyan-400/60" />
-                            <span className="font-mono text-[10px] sm:text-xs text-cyan-400/60">
-                              {currentTool ? `EXECUTANDO ${currentTool.toUpperCase()}...` : "PROCESSANDO..."}
-                            </span>
-                            <span className="flex gap-1">
-                              {[0, 1, 2].map((d) => (
-                                <span
-                                  key={d}
-                                  className="w-1 h-1 rounded-full bg-cyan-400/60 animate-pulse"
-                                  style={{ animationDelay: `${d * 0.2}s` }}
-                                />
-                              ))}
-                            </span>
-                          </div>
-                        ) : streamingContent ? (
-                          <div className="prose prose-sm max-w-none text-cyan-100/90 jarvis-message">
-                            <Streamdown>{streamingContent}</Streamdown>
-                            <span className="inline-block w-1.5 h-3.5 bg-cyan-400/80 animate-pulse ml-0.5 align-middle" />
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[10px] sm:text-xs text-cyan-400/60">INICIALIZANDO RESPOSTA...</span>
-                            <span className="flex gap-1">
-                              {[0, 1, 2].map((d) => (
-                                <span
-                                  key={d}
-                                  className="w-1 h-1 rounded-full bg-cyan-400/60 animate-pulse"
-                                  style={{ animationDelay: `${d * 0.2}s` }}
-                                />
-                              ))}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="font-mono text-[10px] text-amber-400/70">
+                        J.A.R.V.I.S. está pensando...
+                      </span>
                     </div>
                   </div>
                 )}
 
-                {/* Voice speaking indicator */}
-                {kittVoice.isSpeaking && !isStreaming && (
-                  <div className="flex justify-start pl-8">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-400/10 border border-cyan-400/30 animate-pulse-glow">
-                      <Volume size={12} className="text-cyan-400/80" />
-                      <span className="font-mono text-[10px] text-cyan-400/60">FALANDO...</span>
-                      <button
-                        onClick={() => {
-                          handleInterruption();
-                          kittVoice.stop();
-                        }}
-                        className="ml-1 text-amber-400/80 hover:text-amber-400 transition-colors"
-                      >
-                        <Power size={10} />
-                      </button>
+                {/* Streaming content (typing effect) */}
+                {streamingContent && (
+                  <div className="flex gap-2 sm:gap-3">
+                    <div className="shrink-0 mt-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-cyan-400/50 flex items-center justify-center glow-cyan">
+                      <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-cyan-400/80" />
+                    </div>
+                    <div className="max-w-[85%] sm:max-w-[80%] flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5 sm:gap-2 font-mono text-[10px] sm:text-xs">
+                        <span className="text-cyan-400/50 tracking-widest">J.A.R.V.I.S.</span>
+                        <span className="text-cyan-400/25">agora</span>
+                      </div>
+                      <div className="rounded px-3 sm:px-4 py-2 sm:py-3 border border-cyan-400/25 bg-cyan-400/5 text-cyan-100/90 font-mono text-xs sm:text-sm leading-relaxed jarvis-message">
+                        <Streamdown>{streamingContent}</Streamdown>
+                        <span className="inline-block w-1 h-4 bg-cyan-400 ml-0.5 animate-pulse" />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -644,7 +613,7 @@ export default function Home() {
                 </div>
                 {isListening && (
                   <div className="mt-2 p-2 rounded border border-red-400/30 bg-red-400/5">
-                    <div className="font-mono text-[10px] text-red-400/60 mb-1">OUVINDO...</div>
+                    <div className="font-mono text-[10px] text-red-400/60 mb-1">OUVINDO... (fale e pause para enviar)</div>
                     <div className="font-mono text-xs text-red-100/80">
                       {interimTranscript || transcript || "Aguardando fala..."}
                     </div>
@@ -668,6 +637,7 @@ export default function Home() {
                 <div className="hud-panel hud-border rounded-lg p-3">
                   <HudRadar />
                 </div>
+                <AutoImprovePanel />
               </div>
             )}
           </div>
