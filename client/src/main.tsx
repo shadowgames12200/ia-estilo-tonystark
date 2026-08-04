@@ -1,38 +1,11 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink } from "@trpc/client";
-import superjson from "superjson";
-import { trpc } from "./lib/trpc";
-import App from "./App";
-import "./index.css";
-console.log("J.A.R.V.I.S. Loader: Inicilizando...");
-console.log("Root element:", document.getElementById("root"));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: false,
-    },
-  },
-});
-
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-    }),
-  ],
-});
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </trpc.Provider>
-  </React.StrictMode>
-);
+const root = document.getElementById("root");
+if (root) {
+  root.innerHTML = `
+    <div style="color: cyan; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; background: black; flex-direction: column;">
+      <h1>J.A.R.V.I.S. DIAGNOSTIC</h1>
+      <p>Vanilla JS Execution: SUCCESS</p>
+      <p>Time: ${new Date().toLocaleTimeString()}</p>
+    </div>
+  `;
+}
+console.log("J.A.R.V.I.S. Vanilla Diagnostic Loaded");
