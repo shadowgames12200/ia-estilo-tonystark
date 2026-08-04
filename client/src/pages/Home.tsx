@@ -52,6 +52,18 @@ export default function Home() {
   const { isMobile, isTablet, isDesktop } = useDeviceType();
 
   const {
+    transcript,
+    interimTranscript,
+    isListening,
+    isSupported: isSpeechSupported,
+    silenceDetected,
+    startListening,
+    stopListening,
+    resetTranscript,
+    setAiSpeakingText,
+  } = useSpeechRecognition();
+
+  const {
     streamingContent,
     isStreaming,
     isThinking,
@@ -62,6 +74,7 @@ export default function Home() {
     (text) => {
       if (voiceEnabled) {
         aiSpeakingRef.current = true;
+        setAiSpeakingText(text); // Informa ao mic o que a IA está falando para filtrar o eco
         kittVoice.speak(text);
       }
     },
@@ -72,9 +85,10 @@ export default function Home() {
     if (kittVoice.isSpeaking || isStreaming || isThinking) {
       kittVoice.stop();
       aiSpeakingRef.current = false;
+      setAiSpeakingText("");
       stopStream();
     }
-  }, [kittVoice, isStreaming, isThinking, stopStream]);
+  }, [kittVoice, isStreaming, isThinking, stopStream, setAiSpeakingText]);
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
@@ -99,11 +113,11 @@ export default function Home() {
         });
       }
       isProcessingRef.current = false;
+      aiSpeakingRef.current = false;
+      setAiSpeakingText("");
     },
-    [handleInterruption, streamChat]
+    [handleInterruption, streamChat, setAiSpeakingText]
   );
-
-
 
   const pendingTextRef = useRef<string>("");
 
@@ -116,36 +130,19 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
-  // Efeito para ativar o microfone automaticamente no boot ou quando habilitar voz
-  const {
-    transcript,
-    interimTranscript,
-    isListening,
-    isSupported: isSpeechSupported,
-    silenceDetected,
-    startListening,
-    stopListening,
-    resetTranscript,
-    setMute,
-  } = useSpeechRecognition();
-
-  // Efeito para mutar o microfone quando a IA estiver falando
+  // Efeito para sincronizar o estado de fala da IA com o mic
   useEffect(() => {
     const isAiTalking = kittVoice.isSpeaking || isStreaming || isThinking;
-    setMute(isAiTalking);
-    if (isAiTalking) {
-      aiSpeakingRef.current = true;
-    } else {
-      // Pequeno delay para reativar o mic após a fala da IA terminar
-      setTimeout(() => {
-        aiSpeakingRef.current = false;
-      }, 500);
+    if (!isAiTalking) {
+      setAiSpeakingText("");
+      aiSpeakingRef.current = false;
     }
-  }, [kittVoice.isSpeaking, isStreaming, isThinking, setMute]);
+  }, [kittVoice.isSpeaking, isStreaming, isThinking, setAiSpeakingText]);
 
   useEffect(() => {
     if (booted && voiceEnabled && isSpeechSupported && !isListening) {
-      startListening(() => {
+      startListening((detectedText) => {
+        // Se a IA está falando e detectamos voz do usuário (filtrada pelo Eco Filter), interrompemos
         if (aiSpeakingRef.current) {
           handleInterruption();
         }
@@ -156,9 +153,6 @@ export default function Home() {
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
       const text = pendingTextRef.current.trim();
-      
-      // Filtro básico de eco: se o texto captado for muito curto ou similar ao que a IA está falando, ignoramos
-      // (Isso é uma simplificação, mas ajuda a evitar auto-interrupção)
       if (text.length < 2) return;
 
       pendingTextRef.current = "";
@@ -357,22 +351,83 @@ export default function Home() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Digite seu comando, Senhor..."
-                    className="flex-1 bg-transparent border-0 outline-none resize-none font-mono text-cyan-100 placeholder:text-cyan-400/20 p-2 max-h-32 text-sm"
+                    className="flex-1 bg-transparent border-none focus:ring-0 text-cyan-100 placeholder:text-cyan-400/30 font-mono text-sm resize-none py-2 px-1 max-h-32 custom-scrollbar"
                     rows={1}
                   />
-                  <button onClick={() => handleSend(input)} className="p-2 text-cyan-400 hover:text-cyan-300 transition-colors">
-                    <Send size={20} />
+                  <button
+                    onClick={() => handleSend(input)}
+                    disabled={isProcessingRef.current || (!input.trim() && !selectedFile)}
+                    className={`p-2 rounded transition-all ${isProcessingRef.current ? "text-cyan-400/20" : "text-cyan-400 hover:text-cyan-300 hover:bg-cyan-400/10"}`}
+                  >
+                    <Send size={18} />
                   </button>
                 </div>
-                <div className="flex items-center justify-between mt-2 font-mono text-[9px] text-cyan-400/20 uppercase tracking-widest">
-                  <span>Conversa Natural Ativa</span>
-                  <button onClick={() => setShowPanel(!showPanel)} className="hover:text-cyan-400/40 transition-colors">Mostrar Painel</button>
+                <div className="mt-2 flex items-center justify-between font-mono text-[9px] text-cyan-400/30 uppercase tracking-tighter">
+                  <div className="flex items-center gap-3">
+                    <span>STATUS: {isProcessingRef.current ? "PROCESSANDO" : "AGUARDANDO"}</span>
+                    <span>MODELO: {currentModel || "AUTO"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>PRESSIONE ENTER PARA ENVIAR</span>
+                    <span className="text-cyan-400/60">{input.length} CARACTERES</span>
+                  </div>
                 </div>
               </div>
             </div>
           </main>
         </div>
       </div>
+      <style>{`
+        .scanlines {
+          position: relative;
+        }
+        .scanlines::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            transparent 50%,
+            rgba(0, 255, 255, 0.02) 50%
+          );
+          background-size: 100% 4px;
+          pointer-events: none;
+          z-index: 50;
+        }
+        .glow-cyan {
+          box-shadow: 0 0 15px oklch(0.78 0.18 200 / 0.5);
+        }
+        .text-glow-cyan {
+          text-shadow: 0 0 8px oklch(0.78 0.18 200 / 0.5);
+        }
+        .animate-spin-slow {
+          animation: spin 8s linear infinite;
+        }
+        .animate-pulse-glow {
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 0.8; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 20px oklch(0.78 0.18 200 / 0.8); }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(0, 255, 255, 0.05);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(0, 255, 255, 0.2);
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 255, 255, 0.3);
+        }
+      `}</style>
     </>
   );
 }

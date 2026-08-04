@@ -36,9 +36,11 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
-  const isMutedRef = useRef(false); // Ref para controle de mute interno
   
-  const onVoiceDetectedRef = useRef<(() => void) | null>(null);
+  // Referência para o texto que a IA está falando no momento (para filtrar eco)
+  const aiTextRef = useRef<string>("");
+  
+  const onVoiceDetectedRef = useRef<((text: string) => void) | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -61,15 +63,8 @@ export function useSpeechRecognition() {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Se estiver mutado (IA falando), ignoramos completamente o resultado
-        if (isMutedRef.current) return;
-
         let interim = "";
         let final = "";
-
-        if (event.results.length > 0 && onVoiceDetectedRef.current) {
-          onVoiceDetectedRef.current();
-        }
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const t = event.results[i][0].transcript;
@@ -78,6 +73,28 @@ export function useSpeechRecognition() {
           } else {
             interim += t;
           }
+        }
+
+        const currentFullTranscript = (final || interim).toLowerCase().trim();
+        
+        // --- FILTRO DE ECO SEMÂNTICO ---
+        // Se a IA está falando, verificamos se o que ouvimos é apenas o eco dela
+        if (aiTextRef.current) {
+          const aiWords = aiTextRef.current.toLowerCase().split(/\s+/);
+          const heardWords = currentFullTranscript.split(/\s+/);
+          
+          // Se as palavras ouvidas estão contidas no que a IA falou recentemente, ignoramos
+          const newWords = heardWords.filter(word => !aiWords.includes(word) && word.length > 2);
+          
+          // Se não há palavras novas significativas, é eco.
+          if (newWords.length === 0 && heardWords.length > 0) {
+            return; 
+          }
+        }
+
+        // Se chegamos aqui, detectamos voz humana real ou comando novo
+        if (currentFullTranscript.length > 0 && onVoiceDetectedRef.current) {
+          onVoiceDetectedRef.current(currentFullTranscript);
         }
 
         if (final) {
@@ -119,9 +136,8 @@ export function useSpeechRecognition() {
     };
   }, []);
 
-  const startListening = useCallback((onVoiceDetected?: () => void) => {
+  const startListening = useCallback((onVoiceDetected?: (text: string) => void) => {
     if (onVoiceDetected) onVoiceDetectedRef.current = onVoiceDetected;
-    isMutedRef.current = false;
     if (recognitionRef.current) {
       setTranscript("");
       setInterimTranscript("");
@@ -135,21 +151,14 @@ export function useSpeechRecognition() {
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
-    isMutedRef.current = false;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
-  const setMute = useCallback((mute: boolean) => {
-    isMutedRef.current = mute;
-    if (mute) {
-      setTranscript("");
-      setInterimTranscript("");
-      setSilenceDetected(false);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    }
+  const setAiSpeakingText = useCallback((text: string) => {
+    aiTextRef.current = text;
   }, []);
 
   const resetTranscript = useCallback(() => {
@@ -169,6 +178,6 @@ export function useSpeechRecognition() {
     startListening,
     stopListening,
     resetTranscript,
-    setMute,
+    setAiSpeakingText,
   };
 }
