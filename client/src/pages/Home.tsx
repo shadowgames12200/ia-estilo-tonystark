@@ -14,13 +14,19 @@ import { detectLanguageFromText, type Language } from "@/lib/languageDetector";
 export default function Home() {
   const [booted, setBooted] = useState(false);
   
-  console.log("Home rendering, booted:", booted);
+  // Hooks
+  const { isListening, toggleListening, transcript, resetTranscript } = useSpeechRecognition();
+  const { playResponse, stopResponse, isPlaying, audioRef } = useKITTVoice();
+  const { sendMessage, isStreaming, messages } = useStreamingChatWithVoice();
+  const { isSpeaking } = useVoiceActivity();
+
+  console.log("Home rendering with hooks, booted:", booted);
 
   return (
     <div style={{ background: 'black', minHeight: '100vh', color: 'cyan', padding: '20px' }}>
-      <h1>J.A.R.V.I.S. HOME DEBUG</h1>
+      <h1>J.A.R.V.I.S. HOME DEBUG (HOOKS RESTORED)</h1>
       {!booted && <BootSequence onComplete={() => setBooted(true)} />}
-      {booted && <div>SISTEMA CARREGADO COM SUCESSO</div>}
+      {booted && <div>SISTEMA CARREGADO COM SUCESSO. MENSAGENS: {messages.length}</div>}
     </div>
   );
 }
