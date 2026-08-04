@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 
 const BOOT_LINES = [
-  "INITIALIZING J.A.R.V.I.S. v7.3.1...",
-  "LOADING NEURAL INTERFACE PROTOCOLS...",
-  "CALIBRATING HOLOGRAPHIC DISPLAY...",
-  "STARK INDUSTRIES SECURITY CLEARANCE: GRANTED",
-  "CONNECTING TO STARK TOWER MAINFRAME...",
-  "LOADING CONVERSATIONAL AI MODULES...",
-  "VOICE SYNTHESIS ENGINE: ONLINE",
-  "ALL SYSTEMS NOMINAL.",
-  "GOOD DAY, SIR.",
+  "INICIALIZANDO J.A.R.V.I.S. v7.3.1...",
+  "CARREGANDO PROTOCOLOS DE INTERFACE NEURAL...",
+  "CALIBRANDO DISPLAY HOLOGRÁFICO...",
+  "AUTORIZAÇÃO STARK INDUSTRIES: CONCEDIDA",
+  "CONECTANDO À TORRE STARK MAINFRAME...",
+  "CARREGANDO MÓDULOS DE IA CONVERSACIONAL...",
+  "MECANISMO DE SÍNTESE DE VOZ: ONLINE",
+  "TODOS OS SISTEMAS NOMINAIS.",
+  "BOM DIA, SENHOR.",
 ];
 
 interface BootSequenceProps {
@@ -90,7 +90,7 @@ export function BootSequence({ onComplete }: BootSequenceProps) {
       {/* Bottom bar */}
       <div className="absolute bottom-8 left-0 right-0 flex justify-center">
         <div className="text-cyan-400/30 font-mono text-xs tracking-widest">
-          STARK INDUSTRIES — JARVIS INTERFACE v7.3
+          STARK INDUSTRIES — INTERFACE JARVIS v7.3
         </div>
       </div>
     </div>
