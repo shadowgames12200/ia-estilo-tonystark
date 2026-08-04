@@ -95,11 +95,11 @@ export function useStreamingChatWithVoice(
                       setStreamingContent(accumulatedText);
 
                       // Speak chunks when they form complete sentences or reach length threshold
-                      // Reduzido para falar mais rápido (como no vídeo do Raphael)
+                      // Reduced threshold for faster, real-time speech (KITT streaming effect)
                       const sb = sentenceBufferRef.current;
                       if (
                         sb.match(/[.!?]\s*$/) ||
-                        sb.length > 80
+                        sb.length > 40 // Reduced from 80 to 40 for more responsive streaming
                       ) {
                         const textToSpeak = sb.trim();
                         if (textToSpeak) {

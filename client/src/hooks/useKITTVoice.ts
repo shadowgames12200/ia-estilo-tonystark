@@ -16,7 +16,7 @@ export function useKITTVoice() {
     return 'pt-BR';
   });
   const [config] = useState<KITTVoiceConfig>({
-    rate: 1.1,
+    rate: 1.5, // Increased from 1.1 to 1.5 for faster KITT speech
     volume: 1,
     pitch: 0.75,
   });
