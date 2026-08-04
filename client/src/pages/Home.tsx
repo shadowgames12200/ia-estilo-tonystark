@@ -71,13 +71,7 @@ export default function Home() {
     setUserSpeakingStatus(isUserSpeaking);
   }, [isUserSpeaking, setUserSpeakingStatus]);
 
-  const handleInterruption = useCallback(() => {
-    if (kittVoice.isSpeaking || isStreaming || isThinking) {
-      kittVoice.stop();
-      aiSpeakingRef.current = false;
-      stopStream();
-    }
-  }, [kittVoice, stopStream]);
+  // handleInterruption será definido abaixo, após useStreamingChatWithVoice
 
   const {
     streamingContent,
@@ -103,6 +97,14 @@ export default function Home() {
     thinking: isThinking,
     speaking: isStreaming || kittVoice.isSpeaking,
   };
+
+  const handleInterruption = useCallback(() => {
+    if (kittVoice.isSpeaking || isStreaming || isThinking) {
+      kittVoice.stop();
+      aiSpeakingRef.current = false;
+      stopStream();
+    }
+  }, [kittVoice, stopStream, isStreaming, isThinking]);
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
