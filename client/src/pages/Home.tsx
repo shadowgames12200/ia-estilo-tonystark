@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
+import { AutoImprovePanel } from "@/components/AutoImprovePanel";
 import { Streamdown } from "streamdown";
 import { Send, Volume2, VolumeX, Mic, Power, Loader, Volume, Globe, Cpu, Search, Zap } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -447,6 +448,7 @@ export default function Home() {
                 <div className="hud-panel hud-border rounded-lg p-4">
                   <HudRadar />
                 </div>
+                <AutoImprovePanel />
               </div>
             )}
 

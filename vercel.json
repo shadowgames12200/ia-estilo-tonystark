@@ -21,6 +21,10 @@
       "destination": "/api/tts-stream"
     },
     {
+      "source": "/api/auto-improve",
+      "destination": "/api/auto-improve"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -37,6 +41,9 @@
     },
     "api/tts-stream.ts": {
       "maxDuration": 30
+    },
+    "api/auto-improve.ts": {
+      "maxDuration": 180
     }
   }
 }
