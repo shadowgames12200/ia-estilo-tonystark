@@ -25,7 +25,7 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-const SILENCE_TIMEOUT_MS = 1500; // Reduzido para 1.5s para envio mais rápido e natural
+const SILENCE_TIMEOUT_MS = 1200; // Envio mais rápido para conversas naturais
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -36,6 +36,9 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
+  
+  // Callback para interrupção imediata da IA
+  const onVoiceDetectedRef = useRef<(() => void) | null>(null);
   
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,7 +65,11 @@ export function useSpeechRecognition() {
         let interim = "";
         let final = "";
 
-        // O segredo para não repetir é usar o event.resultIndex
+        // Se detectamos qualquer som de fala enquanto a IA fala, avisamos o componente pai
+        if (event.results.length > 0 && onVoiceDetectedRef.current) {
+          onVoiceDetectedRef.current();
+        }
+
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const t = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
@@ -77,7 +84,6 @@ export function useSpeechRecognition() {
         }
         setInterimTranscript(interim);
 
-        // Lógica de silêncio para envio automático
         if (interim.trim() || final.trim()) {
           setSilenceDetected(false);
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -90,16 +96,23 @@ export function useSpeechRecognition() {
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         if (event.error === "no-speech") return;
+        if (event.error === "audio-capture") {
+          setError("Microfone não encontrado ou sem permissão.");
+          return;
+        }
         setError(event.error);
         setIsListening(false);
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        // Reinício automático para manter o microfone sempre ativo (Conversa Natural)
         if (shouldRestartRef.current) {
-          try {
-            recognition.start();
-          } catch (e) {}
+          setTimeout(() => {
+            try {
+              if (recognitionRef.current) recognitionRef.current.start();
+            } catch (e) {}
+          }, 100);
         }
       };
     }
@@ -110,7 +123,8 @@ export function useSpeechRecognition() {
     };
   }, []);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback((onVoiceDetected?: () => void) => {
+    if (onVoiceDetected) onVoiceDetectedRef.current = onVoiceDetected;
     if (recognitionRef.current) {
       setTranscript("");
       setInterimTranscript("");

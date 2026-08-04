@@ -15,7 +15,7 @@ type Message = {
   timestamp: Date;
 };
 
-const MAX_HISTORY = 10; // Economia de tokens Groq
+const MAX_HISTORY = 10;
 
 function useDeviceType() {
   const [isMobile, setIsMobile] = useState(false);
@@ -55,9 +55,7 @@ export default function Home() {
     streamingContent,
     isStreaming,
     isThinking,
-    currentTool,
     currentModel,
-    error: streamError,
     streamChat,
     stopStream,
   } = useStreamingChatWithVoice(
@@ -71,10 +69,12 @@ export default function Home() {
   );
 
   const handleInterruption = useCallback(() => {
-    kittVoice.stop();
-    aiSpeakingRef.current = false;
-    stopStream();
-  }, [kittVoice, stopStream]);
+    if (kittVoice.isSpeaking || isStreaming || isThinking) {
+      kittVoice.stop();
+      aiSpeakingRef.current = false;
+      stopStream();
+    }
+  }, [kittVoice, isStreaming, isThinking, stopStream]);
 
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
@@ -125,17 +125,27 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
-  // Efeito de interrupção por voz e Mute Automático
+  // Efeito para ativar o microfone automaticamente no boot ou quando habilitar voz
   useEffect(() => {
-    if (kittVoice.isSpeaking && isListening) {
-      // Se a IA começou a falar, paramos de ouvir para evitar eco
-      stopListening();
+    if (booted && voiceEnabled && isSpeechSupported && !isListening) {
+      // Passamos o handleInterruption como callback para o reconhecimento de voz
+      startListening(() => {
+        // Se a IA está falando e detectamos voz do usuário, interrompemos
+        if (aiSpeakingRef.current) {
+          handleInterruption();
+        }
+      });
     }
-  }, [kittVoice.isSpeaking, isListening, stopListening]);
+  }, [booted, voiceEnabled, isSpeechSupported, isListening, startListening, handleInterruption]);
 
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
       const text = pendingTextRef.current.trim();
+      
+      // Filtro básico de eco: se o texto captado for muito curto ou similar ao que a IA está falando, ignoramos
+      // (Isso é uma simplificação, mas ajuda a evitar auto-interrupção)
+      if (text.length < 2) return;
+
       pendingTextRef.current = "";
       resetTranscript();
 
@@ -195,7 +205,9 @@ export default function Home() {
       handleInterruption();
       resetTranscript();
       pendingTextRef.current = "";
-      startListening();
+      startListening(() => {
+        if (aiSpeakingRef.current) handleInterruption();
+      });
     }
   }, [isListening, startListening, stopListening, resetTranscript, handleInterruption]);
 
@@ -228,7 +240,6 @@ export default function Home() {
       <div className="min-h-screen w-full relative overflow-hidden scanlines" style={{ background: "oklch(0.05 0.02 220)" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px), linear-gradient(90deg, oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px)`, backgroundSize: isMobile ? "20px 20px" : "40px 40px" }} />
         
-        {/* Corner Brackets */}
         <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-cyan-400/50 pointer-events-none" />
         <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-cyan-400/50 pointer-events-none" />
         <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-cyan-400/50 pointer-events-none" />
@@ -257,7 +268,7 @@ export default function Home() {
               <button onClick={handleMicClick} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${isListening ? "border-red-400/80 text-red-300 bg-red-400/20 animate-pulse" : "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20"}`}>
                 <Mic size={10} /> <span>{isListening ? "OUVINDO" : "MIC"}</span>
               </button>
-              <button onClick={() => { kittVoice.stop(); setVoiceEnabled(!voiceEnabled); }} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${voiceEnabled ? "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20" : "border-cyan-400/20 text-cyan-400/40"}`}>
+              <button onClick={() => { kittVoice.stop(); setVoiceEnabled(!voiceEnabled); if(voiceEnabled) stopListening(); }} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${voiceEnabled ? "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20" : "border-cyan-400/20 text-cyan-400/40"}`}>
                 {voiceEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
                 <span>{voiceEnabled ? "VOZ ATIVA" : "VOZ OFF"}</span>
               </button>
@@ -290,8 +301,8 @@ export default function Home() {
                     <span className="font-mono text-[10px] text-cyan-400/30 mb-1 uppercase tracking-widest">{msg.role === "assistant" ? "J.A.R.V.I.S." : "VOCÊ"}</span>
                     <div className={`max-w-[90%] p-4 rounded border ${msg.role === "user" ? "bg-cyan-400/5 border-cyan-400/40 text-cyan-100" : "bg-slate-900/60 border-cyan-400/20 text-cyan-300"}`}>
                       <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed">
-  <Streamdown>{msg.content}</Streamdown>
-</div>
+                        <Streamdown>{msg.content}</Streamdown>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -305,8 +316,8 @@ export default function Home() {
                         </div>
                       ) : (
                         <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed">
-  <Streamdown>{streamingContent}</Streamdown>
-</div>
+                          <Streamdown>{streamingContent}</Streamdown>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -318,7 +329,7 @@ export default function Home() {
                 {isListening && (
                   <div className="mb-4 p-3 border border-red-400/30 bg-red-400/5 rounded font-mono text-xs text-red-300">
                     <div className="flex items-center gap-2 mb-1 opacity-60">
-                      <Mic size={10} /> <span>CAPTURANDO ÁUDIO...</span>
+                      <Mic size={10} /> <span>ESCUTA ATIVA (Fale para interromper)</span>
                     </div>
                     <p className="min-h-[1.2em]">{transcript} <span className="opacity-40">{interimTranscript}</span></p>
                   </div>
@@ -339,7 +350,7 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="flex items-center justify-between mt-2 font-mono text-[9px] text-cyan-400/20 uppercase tracking-widest">
-                  <span>Pressione Enter para enviar</span>
+                  <span>Conversa Natural Ativa</span>
                   <button onClick={() => setShowPanel(!showPanel)} className="hover:text-cyan-400/40 transition-colors">Mostrar Painel</button>
                 </div>
               </div>
