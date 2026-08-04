@@ -49,9 +49,26 @@ if (!rootElement) {
 }
 
 window.onerror = function(msg, url, line, col, error) {
-  console.error("Global Error:", msg, error);
+  console.error("Global Error:", msg, url, line, col, error);
   if (rootElement) {
-    rootElement.innerHTML += `<div style="color:orange;padding:20px;"><h1>Global Error</h1><pre>${msg}</pre></div>`;
+    const errorDetail = error ? (error.stack || JSON.stringify(error)) : "No error object";
+    rootElement.innerHTML = `<div style="color:orange;padding:20px;background:#1a1a1a;border:1px solid orange;">
+      <h1>Global Error</h1>
+      <p><strong>Message:</strong> ${msg}</p>
+      <p><strong>URL:</strong> ${url}</p>
+      <p><strong>Line:</strong> ${line}, <strong>Col:</strong> ${col}</p>
+      <pre style="white-space:pre-wrap;word-break:break-all;">${errorDetail}</pre>
+    </div>`;
   }
   return false;
+};
+
+window.onunhandledrejection = function(event) {
+  console.error("Unhandled Rejection:", event.reason);
+  if (rootElement) {
+    rootElement.innerHTML = `<div style="color:red;padding:20px;background:#1a1a1a;border:1px solid red;">
+      <h1>Unhandled Rejection</h1>
+      <pre style="white-space:pre-wrap;word-break:break-all;">${event.reason?.stack || event.reason}</pre>
+    </div>`;
+  }
 };
