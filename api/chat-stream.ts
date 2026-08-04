@@ -53,6 +53,21 @@ const WEB_SEARCH_TOOL = {
   },
 };
 
+const VISION_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "analyze_image",
+    description: "Analisa o conteúdo de uma imagem ou documento e retorna uma descrição detalhada ou extrai informações relevantes.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        imageUrl: { type: "string", description: "A URL pública da imagem ou documento a ser analisado." },
+      },
+      required: ["imageUrl"],
+    },
+  },
+};
+
 const EXECUTE_CODE_TOOL = {
   type: "function" as const,
   function: {
@@ -105,10 +120,54 @@ function needsTools(content: string): boolean {
   const needsResearch = ["pesquisar", "pesquisa", "search", "notícia", "news", "últimas", "latest", "hoje", "today", "atual", "current", "agora", "now", "tempo", "weather", "clima", "preço", "price", "valor", "dólar", "cotacao", "cotação"];
   const needsComputation = ["calcular", "calcule", "calculate", "quanto é", "how much", "soma", "multiplicar", "porcentagem", "percent", "math", "matemática"];
 
-  return needsResearch.some((kw) => lower.includes(kw)) || needsComputation.some((kw) => lower.includes(kw));
+  const imageUrlRegex = /(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|pdf|doc|docx|txt))/i;
+  const hasImageUrl = imageUrlRegex.test(content);
+
+  return needsResearch.some((kw) => lower.includes(kw)) || needsComputation.some((kw) => lower.includes(kw)) || hasImageUrl;
 }
 
 // ─── Tool Handlers ───
+
+async function analyzeImageWithVision(imageUrl: string): Promise<string> {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    return "Erro: OPENAI_API_KEY não configurada para análise de imagem.";
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o", // Modelo com capacidade de visão
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Descreva esta imagem em detalhes, identificando objetos, texto, cores e o contexto geral. Se for um documento, extraia o texto principal. Seja conciso, mas informativo." },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        max_tokens: 1000,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      return data.choices[0].message.content;
+    } else {
+      console.error("Erro na API OpenAI Vision:", data);
+      return "Não foi possível analisar a imagem. Erro na API de Visão.";
+    }
+  } catch (error) {
+    console.error("Erro ao chamar a API OpenAI Vision:", error);
+    return `Erro ao analisar a imagem: ${(error as Error).message}`;
+  }
+}
 
 async function webSearch(query: string): Promise<string> {
   const tavilyKey = process.env.TAVILY_API_KEY;
@@ -182,6 +241,8 @@ async function handleToolCall(toolName: string, toolArgs: Record<string, unknown
       return await webSearch(toolArgs.query as string);
     case "execute_js":
       return executeJs(toolArgs.code as string);
+    case "analyze_image":
+      return await analyzeImageWithVision(toolArgs.imageUrl as string);
     default:
       return `Ferramenta não disponível: ${toolName}`;
   }
@@ -335,8 +396,22 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       if (shouldUseTools) {
-        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL];
+        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL, VISION_TOOL];
         payload.tool_choice = "auto";
+      }
+
+      // Se houver uma URL de imagem no conteúdo, adicione-a ao payload para o modelo de visão
+      const imageUrlMatch = queryContent.match(/(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|pdf|doc|docx|txt))/i);
+      if (imageUrlMatch) {
+        const imageUrl = imageUrlMatch[0];
+        // Adiciona uma mensagem com o tipo 'image_url' para o modelo de visão
+        conversationHistory.push({
+          role: "user",
+          content: [{
+            type: "image_url",
+            image_url: { url: imageUrl }
+          }]
+        } as any);
       }
 
       // Make streaming request to Groq
