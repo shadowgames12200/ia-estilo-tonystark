@@ -58,17 +58,24 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
       ctx.fillStyle = bgColor;
       ctx.fill();
 
+      const getAlphaColor = (color: string, alpha: number) => {
+        if (color.includes("/")) {
+          return `${color.split("/")[0]} / ${alpha})`;
+        }
+        return color.replace(")", ` / ${alpha})`);
+      };
+
       // Grid rings
       [0.25, 0.5, 0.75, 1].forEach((ratio) => {
         ctx.beginPath();
         ctx.arc(cx, cy, r * ratio, 0, Math.PI * 2);
-        ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.2)`;
+        ctx.strokeStyle = getAlphaColor(baseColor, 0.2);
         ctx.lineWidth = 1;
         ctx.stroke();
       });
 
       // Cross lines
-      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.2)`;
+      ctx.strokeStyle = getAlphaColor(baseColor, 0.2);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx - r, cy);
@@ -87,8 +94,8 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
       ctx.arc(cx, cy, r, sweepAngle - Math.PI / 2, sweepAngle);
       ctx.closePath();
       const sweepFill = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      sweepFill.addColorStop(0, `${baseColor.split("/")[0]} / 0.05)`);
-      sweepFill.addColorStop(1, `${baseColor.split("/")[0]} / 0.3)`);
+      sweepFill.addColorStop(0, getAlphaColor(baseColor, 0.05));
+      sweepFill.addColorStop(1, getAlphaColor(baseColor, 0.3));
       ctx.fillStyle = sweepFill;
       ctx.fill();
       ctx.restore();
@@ -98,7 +105,7 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.cos(sweepAngle) * r, cy + Math.sin(sweepAngle) * r);
-      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.9)`;
+      ctx.strokeStyle = getAlphaColor(baseColor, 0.9);
       ctx.lineWidth = 1.5;
       ctx.shadowColor = glowColor;
       ctx.shadowBlur = 6;
@@ -115,7 +122,7 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
         if (alpha > 0.05) {
           ctx.beginPath();
           ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
-          ctx.fillStyle = `${baseColor.split("/")[0]} / ${alpha})`;
+          ctx.fillStyle = getAlphaColor(baseColor, alpha);
           ctx.shadowColor = glowColor;
           ctx.shadowBlur = 6;
           ctx.fill();
@@ -125,7 +132,7 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
       // Outer border
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.5)`;
+      ctx.strokeStyle = getAlphaColor(baseColor, 0.5);
       ctx.lineWidth = 1.5;
       ctx.shadowColor = glowColor;
       ctx.shadowBlur = 8;
@@ -137,7 +144,7 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
 
     draw();
     return () => cancelAnimationFrame(animRef.current);
-  }, [size]);
+  }, [size, isListening, isSpeaking, isThinking]);
 
   return (
     <canvas
