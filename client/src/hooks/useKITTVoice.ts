@@ -20,6 +20,17 @@ export function useKITTVoice() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
 
+  const stop = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    queueRef.current = [];
+    setIsSpeaking(false);
+  }, []);
+
   const speakWithBrowser = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
     
@@ -60,6 +71,7 @@ export function useKITTVoice() {
 
       if (!cleanText) return;
 
+      // Se já estiver falando, adiciona à fila
       if (isSpeaking) {
         queueRef.current.push(cleanText);
         return;
@@ -68,8 +80,12 @@ export function useKITTVoice() {
       setIsSpeaking(true);
 
       try {
-        // Usar GET com a URL direta permite que o navegador comece a tocar 
-        // o áudio enquanto ele ainda está sendo baixado (streaming real).
+        // Para qualquer áudio anterior antes de começar um novo
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+
         const audioUrl = `/api/tts-stream?text=${encodeURIComponent(cleanText)}&t=${Date.now()}`;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
@@ -98,24 +114,12 @@ export function useKITTVoice() {
   const processQueue = useCallback(() => {
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
-      // Pequeno delay para naturalidade
       setTimeout(() => {
-        setIsSpeaking(false); // Garante reset do estado
+        setIsSpeaking(false); 
         speak(next);
-      }, 100);
+      }, 50);
     }
   }, [speak]);
-
-  const stop = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    queueRef.current = [];
-    setIsSpeaking(false);
-  }, []);
 
   return {
     isSpeaking,

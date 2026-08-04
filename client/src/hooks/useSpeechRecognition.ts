@@ -25,7 +25,7 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-const SILENCE_TIMEOUT_MS = 1200; // Envio mais rápido para conversas naturais
+const SILENCE_TIMEOUT_MS = 1200;
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -36,10 +36,9 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
+  const isMutedRef = useRef(false); // Ref para controle de mute interno
   
-  // Callback para interrupção imediata da IA
   const onVoiceDetectedRef = useRef<(() => void) | null>(null);
-  
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -62,10 +61,12 @@ export function useSpeechRecognition() {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
+        // Se estiver mutado (IA falando), ignoramos completamente o resultado
+        if (isMutedRef.current) return;
+
         let interim = "";
         let final = "";
 
-        // Se detectamos qualquer som de fala enquanto a IA fala, avisamos o componente pai
         if (event.results.length > 0 && onVoiceDetectedRef.current) {
           onVoiceDetectedRef.current();
         }
@@ -96,17 +97,12 @@ export function useSpeechRecognition() {
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         if (event.error === "no-speech") return;
-        if (event.error === "audio-capture") {
-          setError("Microfone não encontrado ou sem permissão.");
-          return;
-        }
         setError(event.error);
         setIsListening(false);
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        // Reinício automático para manter o microfone sempre ativo (Conversa Natural)
         if (shouldRestartRef.current) {
           setTimeout(() => {
             try {
@@ -125,6 +121,7 @@ export function useSpeechRecognition() {
 
   const startListening = useCallback((onVoiceDetected?: () => void) => {
     if (onVoiceDetected) onVoiceDetectedRef.current = onVoiceDetected;
+    isMutedRef.current = false;
     if (recognitionRef.current) {
       setTranscript("");
       setInterimTranscript("");
@@ -138,10 +135,21 @@ export function useSpeechRecognition() {
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
+    isMutedRef.current = false;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+  }, []);
+
+  const setMute = useCallback((mute: boolean) => {
+    isMutedRef.current = mute;
+    if (mute) {
+      setTranscript("");
+      setInterimTranscript("");
+      setSilenceDetected(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    }
   }, []);
 
   const resetTranscript = useCallback(() => {
@@ -161,5 +169,6 @@ export function useSpeechRecognition() {
     startListening,
     stopListening,
     resetTranscript,
+    setMute,
   };
 }

@@ -103,16 +103,7 @@ export default function Home() {
     [handleInterruption, streamChat]
   );
 
-  const {
-    transcript,
-    interimTranscript,
-    isListening,
-    isSupported: isSpeechSupported,
-    silenceDetected,
-    startListening,
-    stopListening,
-    resetTranscript,
-  } = useSpeechRecognition();
+
 
   const pendingTextRef = useRef<string>("");
 
@@ -126,11 +117,35 @@ export default function Home() {
   }, [interimTranscript, transcript]);
 
   // Efeito para ativar o microfone automaticamente no boot ou quando habilitar voz
+  const {
+    transcript,
+    interimTranscript,
+    isListening,
+    isSupported: isSpeechSupported,
+    silenceDetected,
+    startListening,
+    stopListening,
+    resetTranscript,
+    setMute,
+  } = useSpeechRecognition();
+
+  // Efeito para mutar o microfone quando a IA estiver falando
+  useEffect(() => {
+    const isAiTalking = kittVoice.isSpeaking || isStreaming || isThinking;
+    setMute(isAiTalking);
+    if (isAiTalking) {
+      aiSpeakingRef.current = true;
+    } else {
+      // Pequeno delay para reativar o mic após a fala da IA terminar
+      setTimeout(() => {
+        aiSpeakingRef.current = false;
+      }, 500);
+    }
+  }, [kittVoice.isSpeaking, isStreaming, isThinking, setMute]);
+
   useEffect(() => {
     if (booted && voiceEnabled && isSpeechSupported && !isListening) {
-      // Passamos o handleInterruption como callback para o reconhecimento de voz
       startListening(() => {
-        // Se a IA está falando e detectamos voz do usuário, interrompemos
         if (aiSpeakingRef.current) {
           handleInterruption();
         }
