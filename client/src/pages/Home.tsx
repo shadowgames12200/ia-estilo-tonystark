@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
-import { Send, Volume2, VolumeX, Mic, Power, Loader, Cpu, Upload } from "lucide-react";
+import { AutoImprovePanel } from "@/components/AutoImprovePanel";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
@@ -13,7 +14,7 @@ type Message = {
   timestamp: Date;
 };
 
-const MAX_HISTORY = 10; // Limite de histórico para economizar tokens do Groq
+const MAX_HISTORY = 10; // Economia de tokens Groq
 
 function useDeviceType() {
   const [isMobile, setIsMobile] = useState(false);
@@ -38,21 +39,24 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [showPanel, setShowPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const aiSpeakingRef = useRef(false);
-  const isProcessingRef = useRef(false); // Ref para evitar chamadas duplas
-  
+  const isProcessingRef = useRef(false);
+
   const kittVoice = useKITTVoice();
-  const { isMobile, isDesktop } = useDeviceType();
+  const { isMobile, isTablet, isDesktop } = useDeviceType();
 
   const {
     streamingContent,
     isStreaming,
     isThinking,
+    currentTool,
     currentModel,
+    error: streamError,
     streamChat,
     stopStream,
   } = useStreamingChatWithVoice(
@@ -75,12 +79,10 @@ export default function Home() {
     async (msgs: Array<{ role: string; content: string }>) => {
       if (isProcessingRef.current) return;
       isProcessingRef.current = true;
-
+      
       handleInterruption();
       
-      // Limita o histórico enviado para o Groq para economizar
       const optimizedMsgs = msgs.slice(-MAX_HISTORY);
-      
       const result = await streamChat(optimizedMsgs);
 
       if (result) {
@@ -91,13 +93,10 @@ export default function Home() {
         };
         setMessages((prev) => {
           const next = [...prev, assistantMsg];
-          try {
-            sessionStorage.setItem("jarvis-history", JSON.stringify(next));
-          } catch { /* ignore */ }
+          try { sessionStorage.setItem("jarvis-history", JSON.stringify(next)); } catch (e) {}
           return next;
         });
       }
-      
       isProcessingRef.current = false;
     },
     [handleInterruption, streamChat]
@@ -125,21 +124,26 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
-  // Efeito de detecção de silêncio corrigido para evitar gatilho duplo
+  // Efeito de interrupção por voz e Mute Automático
+  useEffect(() => {
+    if (kittVoice.isSpeaking && isListening) {
+      // Se a IA começou a falar, paramos de ouvir para evitar eco
+      stopListening();
+    }
+  }, [kittVoice.isSpeaking, isListening, stopListening]);
+
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
       const text = pendingTextRef.current.trim();
       pendingTextRef.current = "";
-      resetTranscript(); // Reseta imediatamente
+      resetTranscript();
 
       const detected = detectLanguageFromText(text);
       if (detected.confidence > 0.2) {
         kittVoice.setLanguage(detected.language as Language);
       }
 
-      if (aiSpeakingRef.current) {
-        handleInterruption();
-      }
+      handleInterruption();
 
       const userMsg: Message = {
         role: "user",
@@ -149,7 +153,6 @@ export default function Home() {
       
       setMessages((prev) => {
         const newMsgs = [...prev, userMsg];
-        // Chama o envio com o estado atualizado
         setTimeout(() => {
           sendChat(newMsgs.map((m) => ({ role: m.role, content: m.content })));
         }, 10);
@@ -163,17 +166,9 @@ export default function Home() {
       const trimmed = content.trim();
       if ((!trimmed && !selectedFile) || isProcessingRef.current) return;
 
-      if (aiSpeakingRef.current || isStreaming || isThinking) {
-        handleInterruption();
-      }
+      handleInterruption();
 
       let currentMessages = [...messages];
-
-      if (selectedFile) {
-        // ... lógica de upload ...
-        setSelectedFile(null);
-      }
-
       if (trimmed) {
         const userMsg: Message = {
           role: "user",
@@ -189,18 +184,19 @@ export default function Home() {
         }, 10);
       }
     },
-    [messages, isStreaming, isThinking, sendChat, handleInterruption, selectedFile]
+    [messages, sendChat, handleInterruption, selectedFile]
   );
 
   const handleMicClick = useCallback(() => {
     if (isListening) {
       stopListening();
     } else {
+      handleInterruption();
       resetTranscript();
       pendingTextRef.current = "";
       startListening();
     }
-  }, [isListening, startListening, stopListening, resetTranscript]);
+  }, [isListening, startListening, stopListening, resetTranscript, handleInterruption]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -209,7 +205,6 @@ export default function Home() {
     }
   };
 
-  // Carregar histórico inicial
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem("jarvis-history");
@@ -224,13 +219,21 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
 
+  const showLeftPanel = isDesktop || isTablet;
+
   return (
     <>
       {!booted && <BootSequence onComplete={() => setBooted(true)} />}
       <div className="min-h-screen w-full relative overflow-hidden scanlines" style={{ background: "oklch(0.05 0.02 220)" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px), linear-gradient(90deg, oklch(0.78 0.18 200 / 0.04) 1px, transparent 1px)`, backgroundSize: isMobile ? "20px 20px" : "40px 40px" }} />
         
-        <div className="relative z-10 flex flex-col h-screen max-w-7xl mx-auto px-4">
+        {/* Corner Brackets */}
+        <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-cyan-400/50 pointer-events-none" />
+        <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-cyan-400/50 pointer-events-none" />
+        <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-cyan-400/50 pointer-events-none" />
+        <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-cyan-400/50 pointer-events-none" />
+
+        <div className={`relative z-10 flex flex-col h-screen ${isMobile ? "px-2" : "max-w-7xl mx-auto px-4"}`}>
           <header className="flex items-center justify-between border-b border-cyan-400/20 py-3">
             <div className="flex items-center gap-2">
               <div className="relative flex items-center justify-center w-10 h-10">
@@ -244,75 +247,95 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden md:flex items-center gap-4 font-mono text-xs">
+              <div className="hidden md:flex items-center gap-4 font-mono text-xs text-cyan-400/60">
                 <div className="flex items-center gap-1.5">
                   <div className={`w-1.5 h-1.5 rounded-full ${isThinking ? "bg-amber-400 animate-pulse" : isStreaming ? "bg-cyan-400 animate-pulse" : isListening ? "bg-red-400 animate-pulse" : "bg-green-400"}`} />
-                  <span className="text-cyan-400/60 uppercase">{isThinking ? "Pensando" : isStreaming ? "Transmitindo" : isListening ? "Ouvindo" : "Online"}</span>
+                  <span className="uppercase">{isThinking ? "Pensando" : isStreaming ? "Transmitindo" : isListening ? "Ouvindo" : "Online"}</span>
                 </div>
               </div>
-
-              {isSpeechSupported && (
-                <button onClick={handleMicClick} className={`flex items-center gap-1 rounded border font-mono transition-all px-3 py-1.5 text-xs ${isListening ? "border-red-400/80 text-red-300 bg-red-400/20 animate-pulse" : "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20"}`}>
-                  {isListening ? <><Loader size={10} className="animate-spin" /><span>OUVINDO</span></> : <><Mic size={10} /><span>MIC</span></>}
-                </button>
-              )}
-
-              <button onClick={() => { if (kittVoice.isSpeaking) kittVoice.stop(); setVoiceEnabled(!voiceEnabled); }} className={`flex items-center gap-1 rounded border font-mono transition-all px-3 py-1.5 text-xs ${voiceEnabled ? "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20" : "border-cyan-400/20 text-cyan-400/40"}`}>
+              <button onClick={handleMicClick} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${isListening ? "border-red-400/80 text-red-300 bg-red-400/20 animate-pulse" : "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20"}`}>
+                <Mic size={10} /> <span>{isListening ? "OUVINDO" : "MIC"}</span>
+              </button>
+              <button onClick={() => { kittVoice.stop(); setVoiceEnabled(!voiceEnabled); }} className={`flex items-center gap-1 rounded border font-mono px-3 py-1.5 text-xs transition-all ${voiceEnabled ? "border-cyan-400/50 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20" : "border-cyan-400/20 text-cyan-400/40"}`}>
                 {voiceEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
                 <span>{voiceEnabled ? "VOZ ATIVA" : "VOZ OFF"}</span>
               </button>
             </div>
           </header>
 
-          <main className="flex-1 overflow-hidden flex flex-col py-4">
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono text-[10px] text-cyan-400/40 uppercase tracking-tighter">{msg.role === "assistant" ? "J.A.R.V.I.S." : "VOCÊ"}</span>
-                  </div>
-                  <div className={`max-w-[85%] p-3 rounded border ${msg.role === "user" ? "bg-cyan-400/5 border-cyan-400/30 text-cyan-100" : "bg-slate-900/50 border-cyan-400/20 text-cyan-300"}`}>
-                    <div className="prose prose-invert prose-cyan max-w-none font-sans text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
-                  </div>
+          <main className="flex-1 overflow-hidden flex gap-4 py-4">
+            {showLeftPanel && (
+              <div className="w-64 flex flex-col gap-4">
+                <div className="flex-1 border border-cyan-400/20 bg-slate-900/40 rounded p-4 relative overflow-hidden">
+                  <HudRadar isThinking={isThinking || isStreaming} />
                 </div>
-              ))}
-              {isStreaming && (
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono text-[10px] text-cyan-400/40 uppercase tracking-tighter animate-pulse">J.A.R.V.I.S. (TRANSMITINDO)</span>
-                  </div>
-                  <div className="max-w-[85%] p-3 rounded border bg-slate-900/50 border-cyan-400/20 text-cyan-300">
-                    <div className="prose prose-invert prose-cyan max-w-none font-sans text-sm leading-relaxed whitespace-pre-wrap">{streamingContent}</div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                <AutoImprovePanel />
+              </div>
+            )}
 
-            <div className="mt-4 space-y-4">
-              {isListening && (
-                <div className="p-3 border border-red-400/30 bg-red-400/5 rounded font-mono text-xs text-red-300">
-                  <div className="flex items-center gap-2 mb-1 opacity-60">
-                    <Mic size={10} /> <span>OUVINDO...</span>
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
+                {messages.length === 0 && !isThinking && !isStreaming && (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
+                    <div className="w-16 h-16 rounded-full border-2 border-cyan-400/30 flex items-center justify-center mb-4 animate-pulse">
+                      <Cpu className="text-cyan-400" size={32} />
+                    </div>
+                    <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
+                    <p className="font-mono text-sm text-cyan-400/50 max-w-md">J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.</p>
                   </div>
-                  <p className="min-h-[1.2em]">{transcript} <span className="opacity-50">{interimTranscript}</span></p>
-                </div>
-              )}
+                )}
+                {messages.map((msg, i) => (
+                  <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                    <span className="font-mono text-[10px] text-cyan-400/30 mb-1 uppercase tracking-widest">{msg.role === "assistant" ? "J.A.R.V.I.S." : "VOCÊ"}</span>
+                    <div className={`max-w-[90%] p-4 rounded border ${msg.role === "user" ? "bg-cyan-400/5 border-cyan-400/40 text-cyan-100" : "bg-slate-900/60 border-cyan-400/20 text-cyan-300"}`}>
+                      <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+                    </div>
+                  </div>
+                ))}
+                {(isStreaming || isThinking) && (
+                  <div className="flex flex-col items-start">
+                    <span className="font-mono text-[10px] text-cyan-400/30 mb-1 uppercase tracking-widest animate-pulse">J.A.R.V.I.S. (TRANSMITINDO)</span>
+                    <div className="max-w-[90%] p-4 rounded border bg-slate-900/60 border-cyan-400/20 text-cyan-300">
+                      {isThinking && !streamingContent ? (
+                        <div className="flex items-center gap-2 font-mono text-xs text-cyan-400/50">
+                          <Loader size={12} className="animate-spin" /> <span>PROCESSANDO DADOS...</span>
+                        </div>
+                      ) : (
+                        <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed whitespace-pre-wrap">{streamingContent}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-              <div className="relative group">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Digite seu comando, Senhor..."
-                  className="w-full bg-slate-900/80 border border-cyan-400/30 rounded-lg p-4 pr-24 text-cyan-100 placeholder:text-cyan-400/30 focus:outline-none focus:border-cyan-400/60 transition-all resize-none font-sans text-sm"
-                  rows={2}
-                />
-                <div className="absolute right-2 bottom-2 flex items-center gap-2">
-                  <button onClick={() => handleSend(input)} className="p-2 bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/40 rounded-md text-cyan-300 transition-all">
-                    <Send size={18} />
+              <div className="mt-4 pt-4 border-t border-cyan-400/10">
+                {isListening && (
+                  <div className="mb-4 p-3 border border-red-400/30 bg-red-400/5 rounded font-mono text-xs text-red-300">
+                    <div className="flex items-center gap-2 mb-1 opacity-60">
+                      <Mic size={10} /> <span>CAPTURANDO ÁUDIO...</span>
+                    </div>
+                    <p className="min-h-[1.2em]">{transcript} <span className="opacity-40">{interimTranscript}</span></p>
+                  </div>
+                )}
+
+                <div className="relative border border-cyan-400/30 bg-slate-900/80 rounded-lg p-2 flex items-end gap-2 focus-within:border-cyan-400/60 transition-all">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Digite seu comando, Senhor..."
+                    className="flex-1 bg-transparent border-0 outline-none resize-none font-mono text-cyan-100 placeholder:text-cyan-400/20 p-2 max-h-32 text-sm"
+                    rows={1}
+                  />
+                  <button onClick={() => handleSend(input)} className="p-2 text-cyan-400 hover:text-cyan-300 transition-colors">
+                    <Send size={20} />
                   </button>
+                </div>
+                <div className="flex items-center justify-between mt-2 font-mono text-[9px] text-cyan-400/20 uppercase tracking-widest">
+                  <span>Pressione Enter para enviar</span>
+                  <button onClick={() => setShowPanel(!showPanel)} className="hover:text-cyan-400/40 transition-colors">Mostrar Painel</button>
                 </div>
               </div>
             </div>

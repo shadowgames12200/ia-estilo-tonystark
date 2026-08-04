@@ -15,11 +15,10 @@ export function useKITTVoice() {
     }
     return 'pt-BR';
   });
-  const [config] = useState<KITTVoiceConfig>({ rate: 1.5, volume: 1, pitch: 0.75 });
+  const [config] = useState<KITTVoiceConfig>({ rate: 1.1, volume: 1, pitch: 0.9 });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const speakWithBrowser = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
@@ -69,39 +68,27 @@ export function useKITTVoice() {
       setIsSpeaking(true);
 
       try {
-        if (abortControllerRef.current) abortControllerRef.current.abort();
-        abortControllerRef.current = new AbortController();
-
-        // Tenta usar o streaming de áudio do ElevenLabs primeiro
-        const response = await fetch("/api/tts-stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanText }),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) throw new Error("ElevenLabs failed");
-
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
+        // Usar GET com a URL direta permite que o navegador comece a tocar 
+        // o áudio enquanto ele ainda está sendo baixado (streaming real).
+        const audioUrl = `/api/tts-stream?text=${encodeURIComponent(cleanText)}&t=${Date.now()}`;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
 
+        audio.onplay = () => setIsSpeaking(true);
+        
         audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
           setIsSpeaking(false);
           processQueue();
         };
 
         audio.onerror = () => {
-          console.warn("Audio error, falling back to browser TTS");
+          console.warn("Audio stream error, falling back to browser TTS");
           speakWithBrowser(cleanText);
         };
 
         await audio.play();
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") return;
-        console.warn("TTS API failed, falling back to browser", error);
+        console.warn("TTS Play failed, falling back to browser", error);
         speakWithBrowser(cleanText);
       }
     },
@@ -111,14 +98,18 @@ export function useKITTVoice() {
   const processQueue = useCallback(() => {
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
-      setTimeout(() => speak(next), 50);
+      // Pequeno delay para naturalidade
+      setTimeout(() => {
+        setIsSpeaking(false); // Garante reset do estado
+        speak(next);
+      }, 100);
     }
   }, [speak]);
 
   const stop = useCallback(() => {
-    if (abortControllerRef.current) abortControllerRef.current.abort();
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.src = "";
       audioRef.current = null;
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();

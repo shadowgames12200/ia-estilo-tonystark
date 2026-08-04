@@ -1,17 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { API_CONFIG } from "../server/_core/api-config.js";
 
-// Usar o Voice ID fornecido pelo usuário: pNInz6obpgDQGcFmaJgB
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB"; 
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { text } = req.body;
+  // Suporta POST (body) ou GET (query params) para facilitar streaming direto
+  const text = req.method === "POST" ? req.body.text : req.query.text;
+  
   if (!text) return res.status(400).json({ error: "text is required" });
 
-  const cleanText = text
+  const cleanText = String(text)
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
     .replace(/`(.*?)`/g, "$1")
@@ -26,10 +25,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let lastError = null;
   
-  // Tenta as chaves disponíveis
   for (const key of keys) {
     try {
-      console.log(`[TTS] Tentando chave ElevenLabs (VoiceID: ${ELEVENLABS_VOICE_ID})`);
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`,
         {
@@ -45,11 +42,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             language_code: "pt",
             voice_settings: { 
               stability: 0.5, 
-              similarity_boost: 0.75, 
+              similarity_boost: 0.8, 
               style: 0.0, 
               use_speaker_boost: true 
             },
-            latency_optimization: 2,
+            latency_optimization: 4, // Otimização máxima de latência (nível 4)
           }),
         }
       );
@@ -70,11 +67,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.end();
       } else {
         const err = await response.text();
-        console.warn(`[TTS] Chave falhou: ${err}`);
+        console.warn(`[TTS] Key failed: ${err}`);
         lastError = err;
       }
     } catch (e) {
-      console.error("[TTS] Erro no stream:", e);
+      console.error("[TTS] Stream error:", e);
       lastError = e;
     }
   }
