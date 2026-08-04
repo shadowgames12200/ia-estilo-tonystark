@@ -1,6 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
+import { BootSequence } from "@/components/BootSequence";
 
 export default function Home() {
+  const [booted, setBooted] = useState(false);
+
+  if (!booted) {
+    return <BootSequence onComplete={() => setBooted(true)} />;
+  }
+
   return (
     <div style={{ 
       backgroundColor: 'black', 
