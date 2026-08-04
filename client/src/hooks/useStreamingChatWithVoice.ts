@@ -99,7 +99,7 @@ export function useStreamingChatWithVoice(
                       const sb = sentenceBufferRef.current;
                       if (
                         sb.match(/[.!?]\s*$/) ||
-                        sb.length > 40 // Reduced from 80 to 40 for more responsive streaming
+                        sb.length > 60 // Ajustado para frases mais naturais sem perder a velocidade
                       ) {
                         const textToSpeak = sb.trim();
                         if (textToSpeak) {

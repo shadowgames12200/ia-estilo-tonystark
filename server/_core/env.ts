@@ -11,7 +11,7 @@ export const ENV = {
   groqApiUrl: process.env.GROQ_API_BASE ?? "https://api.groq.com/openai/v1",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
+  supabaseAnonKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
   githubToken: process.env.GITHUB_TOKEN ?? "",
   approvalKey: process.env.APPROVAL_KEY ?? "",
   tavilyApiKey: process.env.TAVILY_API_KEY ?? "",
