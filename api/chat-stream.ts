@@ -41,6 +41,23 @@ const DEFAULT_CONFIG = {
 };
 
 // ─── Tools ───
+const STARK_SYSTEM_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "stark_system",
+    description: "Controla a casa inteligente (IoT) e fornece status dos sistemas J.A.R.V.I.S. (incluindo status de deploy na Vercel).",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", enum: ["control_home", "get_status", "check_deploy"], description: "A ação a ser executada." },
+        device: { type: "string", description: "O nome do dispositivo (ex: luz_sala, ar_quarto)." },
+        state: { type: "string", enum: ["on", "off"], description: "O estado desejado." },
+      },
+      required: ["action"],
+    },
+  },
+};
+
 const WEB_SEARCH_TOOL = {
   type: "function" as const,
   function: {
@@ -76,7 +93,11 @@ type ToolCall = {
 
 // ─── Helpers ───
 async function handleToolCall(toolName: string, toolArgs: any): Promise<string> {
-  // Implementação simplificada para o exemplo, idealmente chama os módulos do server/_core
+  if (toolName === "stark_system") {
+    const { starkTools } = await import("../server/_core/stark-module.js");
+    return await starkTools.execute(toolArgs);
+  }
+  
   if (toolName === "web_search") {
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (!tavilyKey) return "Erro: TAVILY_API_KEY não configurada.";
@@ -182,11 +203,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         response = await fetch(GROQ_API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-          body: JSON.stringify({
+            body: JSON.stringify({
             model: DEFAULT_CONFIG.model,
             messages: conversationHistory,
             stream: true,
-            tools: toolCallCount < DEFAULT_CONFIG.maxToolCalls ? [WEB_SEARCH_TOOL] : undefined
+            tools: toolCallCount < DEFAULT_CONFIG.maxToolCalls ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL] : undefined
           }),
         });
         if (!response.ok) throw new Error(`Groq failed: ${response.status}`);

@@ -59,6 +59,51 @@ export const VoiceService = {
 // --- Módulo de Automação (Jeito Stark) ---
 export const HomeAutomation = {
   /**
+   * Verifica o status do deploy na Vercel
+   */
+  async getVercelStatus(): Promise<string> {
+    const token = process.env.VERCEL_TOKEN;
+    const projectId = process.env.VERCEL_PROJECT_ID;
+
+    if (!token) {
+      return "Senhor, o VERCEL_TOKEN não está configurado. Não consigo verificar o status real do deploy, mas meus sistemas internos indicam que estou operacional.";
+    }
+
+    try {
+      const url = projectId 
+        ? `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=1`
+        : `https://api.vercel.com/v6/deployments?limit=1`;
+        
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const latest = response.data.deployments?.[0];
+      if (!latest) return "Não encontrei registros de deploy recentes, Senhor.";
+
+      const status = latest.readyState;
+      const createdAt = new Date(latest.createdAt).toLocaleString("pt-BR");
+      
+      let message = `DIAGNÓSTICO DE SISTEMA (VERCEL):\n`;
+      message += `- Status: ${status}\n`;
+      message += `- Última atualização: ${createdAt}\n`;
+      message += `- URL: https://${latest.url}\n\n`;
+      
+      if (status === "READY") {
+        message += "O deploy foi concluído com sucesso. Todos os sistemas estão 'Ready', Senhor.";
+      } else if (status === "BUILDING") {
+        message += "O sistema está sendo compilado neste exato momento. Por favor, aguarde a conclusão.";
+      } else {
+        message += `O sistema reportou um estado de ${status}. Recomendo verificar os logs, Senhor.`;
+      }
+      
+      return message;
+    } catch (error) {
+      return `Falha ao conectar com a Vercel API, Senhor. ${(error as Error).message}`;
+    }
+  },
+
+  /**
    * Controla dispositivos via Home Assistant
    */
   async controlDevice(deviceName: string, action: "on" | "off"): Promise<string> {
@@ -119,6 +164,8 @@ export const starkTools = {
         return await HomeAutomation.controlDevice(device, state);
       case "get_status":
         return await HomeAutomation.getHomeStatus();
+      case "check_deploy":
+        return await HomeAutomation.getVercelStatus();
       default:
         return "Ação não reconhecida pelo protocolo Stark.";
     }

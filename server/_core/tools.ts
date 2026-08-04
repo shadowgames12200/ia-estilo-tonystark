@@ -128,11 +128,11 @@ export const tools: Tool[] = [
     type: "function",
     function: {
       name: "stark_system",
-      description: "Controla a casa inteligente (luzes, ar-condicionado, TV) e fornece status do sistema estilo Jarvis/Sexta-Feira.",
+      description: "Controla a casa inteligente (luzes, ar-condicionado, TV) e fornece status do sistema estilo Jarvis/Sexta-Feira (incluindo status de deploy na Vercel).",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["control_home", "get_status"], description: "A ação a ser executada." },
+          action: { type: "string", enum: ["control_home", "get_status", "check_deploy"], description: "A ação a ser executada." },
           device: { type: "string", description: "O nome do dispositivo (ex: luz_sala, ar_quarto)." },
           state: { type: "string", enum: ["on", "off"], description: "O estado desejado." },
         },
