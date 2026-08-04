@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { API_CONFIG } from "../server/_core/api-config.js";
+import { API_CONFIG } from "../server/_core/api-config;
 
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB"; 
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";

@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "@vercel/node";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark, adaptada para falar em português brasileiro.
 Sua personalidade é sofisticada, leal, proativa e extremamente competente.
@@ -178,7 +178,7 @@ function selectModel(content: string): string {
   return "llama-3.3-70b-versatile";
 }
 
-async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
