@@ -1,25 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { API_CONFIG } from "../server/_core/api-config.js";
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-const ELEVENLABS_VOICE_ID = "IZSifFFhXEvnSbW5DgQl"; // Liam - voz masculina potente e sofisticada para PT-BR (estilo J.A.R.V.I.S./K.I.T.T.)
-const ELEVENLABS_MODEL = "eleven_multilingual_v2"; // Suporta PT-BR nativamente
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
+const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { text } = req.body;
+  if (!text) return res.status(400).json({ error: "text is required" });
 
-  if (!text || typeof text !== "string") {
-    return res.status(400).json({ error: "text is required" });
-  }
-
-  if (!ELEVENLABS_API_KEY) {
-    return res.status(500).json({ error: "ELEVENLABS_API_KEY not configured" });
-  }
-
-  // Limpar o texto (remover markdown)
   const cleanText = text
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
@@ -28,55 +18,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .replace(/\n/g, " ")
     .trim();
 
-  if (!cleanText) {
-    return res.status(400).json({ error: "Empty text after cleaning" });
-  }
+  if (!cleanText) return res.status(400).json({ error: "Empty text" });
 
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "Accept": "audio/mpeg",
-          "Content-Type": "application/json",
-          "xi-api-key": ELEVENLABS_API_KEY,
-        },
-        body: JSON.stringify({
-          text: cleanText,
-          model_id: ELEVENLABS_MODEL,
-          language_code: "pt", // Forçar português brasileiro
-          voice_settings: {
-            stability: 0.6,
-            similarity_boost: 0.85,
-            style: 0.4,
-            use_speaker_boost: true,
+  const keys = API_CONFIG.ELEVENLABS_KEYS;
+  if (keys.length === 0) return res.status(500).json({ error: "ELEVENLABS_API_KEY not configured" });
+
+  for (const key of keys) {
+    try {
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+        {
+          method: "POST",
+          headers: {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": key,
           },
-        }),
+          body: JSON.stringify({
+            text: cleanText,
+            model_id: ELEVENLABS_MODEL,
+            language_code: "pt",
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const audioBuffer = await response.arrayBuffer();
+        res.setHeader("Content-Type", "audio/mpeg");
+        return res.status(200).send(Buffer.from(audioBuffer));
       }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("ElevenLabs API error:", response.status, errorText);
-      return res.status(response.status).json({
-        error: "ElevenLabs API error",
-        details: errorText,
-      });
+    } catch (e) {
+      console.error("[TTS] Erro:", e);
     }
-
-    // Pegar o áudio como buffer
-    const audioBuffer = await response.arrayBuffer();
-
-    // Retornar o áudio como MP3
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "no-cache");
-    res.status(200).send(Buffer.from(audioBuffer));
-  } catch (error) {
-    console.error("TTS error:", error);
-    res.status(500).json({
-      error: "Failed to generate speech",
-      details: error instanceof Error ? error.message : "Unknown error",
-    });
   }
+
+  res.status(500).json({ error: "TTS failed" });
 }

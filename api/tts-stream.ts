@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { API_CONFIG, getRandomKey } from "../server/_core/api-config.js";
+import { API_CONFIG } from "../server/_core/api-config.js";
 
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "IZSifFFhXEvnSbW5DgQl"; 
+// Usar o Voice ID fornecido pelo usuário: pNInz6obpgDQGcFmaJgB
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB"; 
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -25,11 +26,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let lastError = null;
   
-  // Tenta até 2 chaves diferentes se houver falha
-  const keysToTry = keys.slice(0, 2);
-  
-  for (const key of keysToTry) {
+  // Tenta as chaves disponíveis
+  for (const key of keys) {
     try {
+      console.log(`[TTS] Tentando chave ElevenLabs (VoiceID: ${ELEVENLABS_VOICE_ID})`);
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`,
         {
@@ -43,8 +43,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             text: cleanText,
             model_id: ELEVENLABS_MODEL,
             language_code: "pt",
-            voice_settings: { stability: 0.6, similarity_boost: 0.85, style: 0.4, use_speaker_boost: true },
-            latency_optimization: 4, // Otimização máxima de latência
+            voice_settings: { 
+              stability: 0.5, 
+              similarity_boost: 0.75, 
+              style: 0.0, 
+              use_speaker_boost: true 
+            },
+            latency_optimization: 2,
           }),
         }
       );
@@ -65,11 +70,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.end();
       } else {
         const err = await response.text();
-        console.warn(`ElevenLabs key failed: ${err}`);
+        console.warn(`[TTS] Chave falhou: ${err}`);
         lastError = err;
       }
     } catch (e) {
-      console.error("TTS Stream error:", e);
+      console.error("[TTS] Erro no stream:", e);
       lastError = e;
     }
   }
