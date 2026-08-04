@@ -7,6 +7,7 @@ import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Up
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
+import { useVoiceActivity } from "@/hooks/useVoiceActivity";
 import { detectLanguageFromText, type Language } from "@/lib/languageDetector";
 
 type Message = {
@@ -50,6 +51,7 @@ export default function Home() {
 
   const kittVoice = useKITTVoice();
   const { isMobile, isTablet, isDesktop } = useDeviceType();
+  const { isUserSpeaking, startMonitoring, stopMonitoring } = useVoiceActivity(0.06); // Threshold de volume
 
   const {
     transcript,
@@ -60,8 +62,13 @@ export default function Home() {
     startListening,
     stopListening,
     resetTranscript,
-    setIgnoreInput,
+    setUserSpeakingStatus,
   } = useSpeechRecognition();
+
+  // Sincroniza o status de volume com o reconhecimento de voz
+  useEffect(() => {
+    setUserSpeakingStatus(isUserSpeaking);
+  }, [isUserSpeaking, setUserSpeakingStatus]);
 
   const handleInterruption = useCallback(() => {
     if (kittVoice.isSpeaking || isStreaming || isThinking) {
@@ -93,10 +100,6 @@ export default function Home() {
       if (isProcessingRef.current) return;
       isProcessingRef.current = true;
       
-      // Quando a IA começa a processar, ignoramos a entrada do mic temporariamente
-      // para evitar que ela "se ouça" internamente
-      setIgnoreInput(true);
-      
       handleInterruption();
       
       const optimizedMsgs = msgs.slice(-MAX_HISTORY);
@@ -117,9 +120,8 @@ export default function Home() {
       
       isProcessingRef.current = false;
       aiSpeakingRef.current = false;
-      setIgnoreInput(false);
     },
-    [handleInterruption, streamChat, setIgnoreInput]
+    [handleInterruption, streamChat]
   );
 
   const pendingTextRef = useRef<string>("");
@@ -133,22 +135,29 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
+  // Iniciar monitoramento de volume no boot
+  useEffect(() => {
+    if (booted && voiceEnabled) {
+      startMonitoring();
+    } else {
+      stopMonitoring();
+    }
+  }, [booted, voiceEnabled, startMonitoring, stopMonitoring]);
+
   useEffect(() => {
     if (booted && voiceEnabled && isSpeechSupported && !isListening) {
       startListening((detectedText) => {
-        // Se a IA está falando e detectamos voz real do usuário, interrompemos
-        if (aiSpeakingRef.current) {
+        // Se a IA está falando e o VAD detectou voz real (proximidade), interrompemos
+        if (aiSpeakingRef.current && isUserSpeaking) {
           handleInterruption();
         }
       });
     }
-  }, [booted, voiceEnabled, isSpeechSupported, isListening, startListening, handleInterruption]);
+  }, [booted, voiceEnabled, isSpeechSupported, isListening, startListening, handleInterruption, isUserSpeaking]);
 
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
       const text = pendingTextRef.current.trim();
-      
-      // Filtro de comprimento e eco
       if (text.length < 2) return;
 
       pendingTextRef.current = "";
@@ -206,15 +215,17 @@ export default function Home() {
   const handleMicClick = useCallback(() => {
     if (isListening) {
       stopListening();
+      stopMonitoring();
     } else {
       handleInterruption();
       resetTranscript();
       pendingTextRef.current = "";
+      startMonitoring();
       startListening(() => {
-        if (aiSpeakingRef.current) handleInterruption();
+        if (aiSpeakingRef.current && isUserSpeaking) handleInterruption();
       });
     }
-  }, [isListening, startListening, stopListening, resetTranscript, handleInterruption]);
+  }, [isListening, startListening, stopListening, resetTranscript, handleInterruption, startMonitoring, stopMonitoring, isUserSpeaking]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -332,9 +343,15 @@ export default function Home() {
 
               <div className="mt-4 pt-4 border-t border-cyan-400/10">
                 {isListening && (
-                  <div className="mb-4 p-3 border border-red-400/30 bg-red-400/5 rounded font-mono text-xs text-red-300">
-                    <div className="flex items-center gap-2 mb-1 opacity-60">
-                      <Mic size={10} /> <span>ESCUTA ATIVA (Fale para interromper)</span>
+                  <div className="mb-4 p-3 border border-red-400/30 bg-red-400/5 rounded font-mono text-xs text-red-300 relative">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 opacity-60">
+                        <Mic size={10} /> <span>BIOMETRIA DE VOZ ATIVA</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className={`w-2 h-2 rounded-full ${isUserSpeaking ? "bg-green-400 shadow-[0_0_8px_#4ade80]" : "bg-slate-600"}`} />
+                        <span className="text-[8px]">{isUserSpeaking ? "VOCÊ" : "RUÍDO"}</span>
+                      </div>
                     </div>
                     <p className="min-h-[1.2em]">{transcript} <span className="opacity-40">{interimTranscript}</span></p>
                   </div>
@@ -357,16 +374,6 @@ export default function Home() {
                   >
                     <Send size={18} />
                   </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between font-mono text-[9px] text-cyan-400/30 uppercase tracking-tighter">
-                  <div className="flex items-center gap-3">
-                    <span>STATUS: {isProcessingRef.current ? "PROCESSANDO" : "AGUARDANDO"}</span>
-                    <span>MODELO: {currentModel || "AUTO"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span>PRESSIONE ENTER PARA ENVIAR</span>
-                    <span className="text-cyan-400/60">{input.length} CARACTERES</span>
-                  </div>
                 </div>
               </div>
             </div>

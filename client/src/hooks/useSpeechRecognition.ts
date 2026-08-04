@@ -25,7 +25,7 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-const SILENCE_TIMEOUT_MS = 1500; // Um pouco mais de tempo para evitar envios picados
+const SILENCE_TIMEOUT_MS = 1500;
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -40,8 +40,8 @@ export function useSpeechRecognition() {
   const onVoiceDetectedRef = useRef<((text: string) => void) | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  // Ref para controlar se estamos ignorando a entrada (durante processamento pesado)
-  const isIgnoringRef = useRef(false);
+  // Ref para o VAD (Volume Activity Detection) vindo de fora
+  const isUserSpeakingRef = useRef(false);
 
   useEffect(() => {
     const SpeechRecognition =
@@ -63,7 +63,10 @@ export function useSpeechRecognition() {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        if (isIgnoringRef.current) return;
+        // --- FILTRO BIOMÉTRICO ---
+        // Se o analisador de volume não detectar atividade humana real, ignoramos o resultado.
+        // Isso evita que ruídos de fundo ou eco interno disparem a IA.
+        if (!isUserSpeakingRef.current) return;
 
         let interim = "";
         let final = "";
@@ -123,7 +126,6 @@ export function useSpeechRecognition() {
 
   const startListening = useCallback((onVoiceDetected?: (text: string) => void) => {
     if (onVoiceDetected) onVoiceDetectedRef.current = onVoiceDetected;
-    isIgnoringRef.current = false;
     if (recognitionRef.current) {
       setTranscript("");
       setInterimTranscript("");
@@ -143,15 +145,15 @@ export function useSpeechRecognition() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
+  const setUserSpeakingStatus = useCallback((isSpeaking: boolean) => {
+    isUserSpeakingRef.current = isSpeaking;
+  }, []);
+
   const resetTranscript = useCallback(() => {
     setTranscript("");
     setInterimTranscript("");
     setSilenceDetected(false);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-  }, []);
-
-  const setIgnoreInput = useCallback((ignore: boolean) => {
-    isIgnoringRef.current = ignore;
   }, []);
 
   return {
@@ -164,6 +166,6 @@ export function useSpeechRecognition() {
     startListening,
     stopListening,
     resetTranscript,
-    setIgnoreInput,
+    setUserSpeakingStatus,
   };
 }
