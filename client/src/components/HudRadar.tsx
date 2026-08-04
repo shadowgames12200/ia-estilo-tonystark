@@ -3,9 +3,12 @@ import { useEffect, useRef } from "react";
 interface HudRadarProps {
   size?: number;
   className?: string;
+  isListening?: boolean;
+  isSpeaking?: boolean;
+  isThinking?: boolean;
 }
 
-export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
+export function HudRadar({ size = 200, className = "", isListening = false, isSpeaking = false, isThinking = false }: HudRadarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const angleRef = useRef(0);
@@ -31,23 +34,41 @@ export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
       if (!ctx || !canvas) return;
       ctx.clearRect(0, 0, size, size);
 
+      let baseColor = "oklch(0.78 0.18 200)"; // Cyan padrão
+      let bgColor = "oklch(0.06 0.02 220 / 0.9)";
+      let glowColor = "oklch(0.78 0.18 200)";
+
+      if (isListening) {
+        baseColor = "oklch(0.7 0.2 10 / 0.9)"; // Vermelho para listening
+        bgColor = "oklch(0.06 0.02 10 / 0.9)";
+        glowColor = "oklch(0.7 0.2 10)";
+      } else if (isSpeaking) {
+        baseColor = "oklch(0.7 0.2 280 / 0.9)"; // Magenta para speaking
+        bgColor = "oklch(0.06 0.02 280 / 0.9)";
+        glowColor = "oklch(0.7 0.2 280)";
+      } else if (isThinking) {
+        baseColor = "oklch(0.7 0.2 60 / 0.9)"; // Amarelo para thinking
+        bgColor = "oklch(0.06 0.02 60 / 0.9)";
+        glowColor = "oklch(0.7 0.2 60)";
+      }
+
       // Background circle
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = "oklch(0.06 0.02 220 / 0.9)";
+      ctx.fillStyle = bgColor;
       ctx.fill();
 
       // Grid rings
       [0.25, 0.5, 0.75, 1].forEach((ratio) => {
         ctx.beginPath();
         ctx.arc(cx, cy, r * ratio, 0, Math.PI * 2);
-        ctx.strokeStyle = "oklch(0.78 0.18 200 / 0.2)";
+        ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.2)`;
         ctx.lineWidth = 1;
         ctx.stroke();
       });
 
       // Cross lines
-      ctx.strokeStyle = "oklch(0.78 0.18 200 / 0.2)";
+      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.2)`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx - r, cy);
@@ -66,8 +87,8 @@ export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
       ctx.arc(cx, cy, r, sweepAngle - Math.PI / 2, sweepAngle);
       ctx.closePath();
       const sweepFill = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      sweepFill.addColorStop(0, "oklch(0.78 0.18 200 / 0.05)");
-      sweepFill.addColorStop(1, "oklch(0.78 0.18 200 / 0.3)");
+      sweepFill.addColorStop(0, `${baseColor.split("/")[0]} / 0.05)`);
+      sweepFill.addColorStop(1, `${baseColor.split("/")[0]} / 0.3)`);
       ctx.fillStyle = sweepFill;
       ctx.fill();
       ctx.restore();
@@ -77,9 +98,9 @@ export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.cos(sweepAngle) * r, cy + Math.sin(sweepAngle) * r);
-      ctx.strokeStyle = "oklch(0.88 0.20 200 / 0.9)";
+      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.9)`;
       ctx.lineWidth = 1.5;
-      ctx.shadowColor = "oklch(0.78 0.18 200)";
+      ctx.shadowColor = glowColor;
       ctx.shadowBlur = 6;
       ctx.stroke();
       ctx.restore();
@@ -94,8 +115,8 @@ export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
         if (alpha > 0.05) {
           ctx.beginPath();
           ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
-          ctx.fillStyle = `oklch(0.88 0.20 200 / ${alpha})`;
-          ctx.shadowColor = "oklch(0.78 0.18 200)";
+          ctx.fillStyle = `${baseColor.split("/")[0]} / ${alpha})`;
+          ctx.shadowColor = glowColor;
           ctx.shadowBlur = 6;
           ctx.fill();
         }
@@ -104,9 +125,9 @@ export function HudRadar({ size = 200, className = "" }: HudRadarProps) {
       // Outer border
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = "oklch(0.78 0.18 200 / 0.5)";
+      ctx.strokeStyle = `${baseColor.split("/")[0]} / 0.5)`;
       ctx.lineWidth = 1.5;
-      ctx.shadowColor = "oklch(0.78 0.18 200)";
+      ctx.shadowColor = glowColor;
       ctx.shadowBlur = 8;
       ctx.stroke();
 

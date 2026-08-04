@@ -518,7 +518,11 @@ export default function Home() {
             {showLeftPanel && (
               <div className="hidden md:block w-80 shrink-0 space-y-3">
                 <div className="hud-panel hud-border rounded-lg p-4">
-                  <HudRadar />
+                  <HudRadar
+                    isListening={isListening}
+                    isSpeaking={kittVoice.isSpeaking}
+                    isThinking={isThinking}
+                  />
                 </div>
                 <AutoImprovePanel />
               </div>
@@ -706,7 +710,11 @@ export default function Home() {
             {isMobile && showPanel && (
               <div className="mt-2 space-y-3">
                 <div className="hud-panel hud-border rounded-lg p-3">
-                  <HudRadar />
+                  <HudRadar
+                    isListening={isListening}
+                    isSpeaking={kittVoice.isSpeaking}
+                    isThinking={isThinking}
+                  />
                 </div>
                 <AutoImprovePanel />
               </div>
