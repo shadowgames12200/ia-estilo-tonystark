@@ -17,4 +17,8 @@ export const ENV = {
   tavilyApiKey: process.env.TAVILY_API_KEY ?? "",
   googleCloudApiKey: process.env.GOOGLE_CLOUD_API_KEY ?? "",
   edgeTtsEnabled: process.env.EDGE_TTS_ENABLED !== "false",
+  elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? "",
+  elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "",
+  homeAssistantUrl: process.env.HOME_ASSISTANT_URL ?? "",
+  homeAssistantToken: process.env.HOME_ASSISTANT_TOKEN ?? "",
 };

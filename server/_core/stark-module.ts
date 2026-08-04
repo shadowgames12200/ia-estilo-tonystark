@@ -20,7 +20,7 @@ export const VoiceService = {
    * Converte texto em fala usando ElevenLabs (Voz sofisticada)
    */
   async textToSpeech(text: string): Promise<string | null> {
-    if (!ENV.ELEVENLABS_API_KEY || !ENV.ELEVENLABS_VOICE_ID) {
+    if (!ENV.elevenLabsApiKey || !ENV.elevenLabsVoiceId) {
       console.log("[Stark-Voice] ElevenLabs não configurado. Usando fallback do browser.");
       return null;
     }
@@ -28,7 +28,7 @@ export const VoiceService = {
     try {
       console.log(`[Stark-Voice] Gerando voz via ElevenLabs para: ${text.slice(0, 30)}...`);
       const response = await axios.post(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ENV.ELEVENLABS_VOICE_ID}`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${ENV.elevenLabsVoiceId}`,
         {
           text,
           model_id: "eleven_multilingual_v2",
@@ -39,7 +39,7 @@ export const VoiceService = {
         },
         {
           headers: {
-            "xi-api-key": ENV.ELEVENLABS_API_KEY,
+            "xi-api-key": ENV.elevenLabsApiKey,
             "Content-Type": "application/json",
           },
           responseType: "arraybuffer",
@@ -109,17 +109,17 @@ export const HomeAutomation = {
   async controlDevice(deviceName: string, action: "on" | "off"): Promise<string> {
     console.log(`[Stark-Home] Executando: ${action} em ${deviceName}`);
     
-    if (!ENV.HOME_ASSISTANT_URL || !ENV.HOME_ASSISTANT_TOKEN) {
+    if (!ENV.homeAssistantUrl || !ENV.homeAssistantToken) {
       return `Simulação: O(A) ${deviceName} foi ${action === 'on' ? 'ligado(a)' : 'desligado(a)'}, Senhor. (Configure o Home Assistant para ação real)`;
     }
 
     try {
       await axios.post(
-        `${ENV.HOME_ASSISTANT_URL}/api/services/homeassistant/turn_${action}`,
+        `${ENV.homeAssistantUrl}/api/services/homeassistant/turn_${action}`,
         { entity_id: deviceName.includes(".") ? deviceName : `switch.${deviceName}` },
         {
           headers: {
-            Authorization: `Bearer ${ENV.HOME_ASSISTANT_TOKEN}`,
+            Authorization: `Bearer ${ENV.homeAssistantToken}`,
             "Content-Type": "application/json",
           },
         }
@@ -135,13 +135,13 @@ export const HomeAutomation = {
    * Status Geral da Casa
    */
   async getHomeStatus(): Promise<string> {
-    if (!ENV.HOME_ASSISTANT_URL || !ENV.HOME_ASSISTANT_TOKEN) {
+    if (!ENV.homeAssistantUrl || !ENV.homeAssistantToken) {
       return "Todos os sistemas estão operacionais em modo de simulação, Senhor. Luzes da sala apagadas, temperatura em 22 graus.";
     }
 
     try {
-      const response = await axios.get(`${ENV.HOME_ASSISTANT_URL}/api/states`, {
-        headers: { Authorization: `Bearer ${ENV.HOME_ASSISTANT_TOKEN}` }
+      const response = await axios.get(`${ENV.homeAssistantUrl}/api/states`, {
+        headers: { Authorization: `Bearer ${ENV.homeAssistantToken}` }
       });
       // Lógica para resumir os estados
       return "Sistemas da casa sincronizados. Tudo parece estar em ordem, Senhor.";

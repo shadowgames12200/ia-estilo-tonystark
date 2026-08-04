@@ -1,6 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, User, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -151,15 +148,13 @@ export function AIChatBox({
 
   // Scroll to bottom helper function with smooth animation
   const scrollToBottom = () => {
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-radix-scroll-area-viewport]'
-    ) as HTMLDivElement;
+    const viewport = scrollAreaRef.current;
 
     if (viewport) {
       requestAnimationFrame(() => {
         viewport.scrollTo({
           top: viewport.scrollHeight,
-          behavior: 'smooth'
+          behavior: "smooth",
         });
       });
     }
@@ -223,7 +218,7 @@ export function AIChatBox({
             </div>
           </div>
         ) : (
-          <ScrollArea className="h-full">
+          <div ref={scrollAreaRef} className="h-full overflow-y-auto">
             <div className="flex flex-col space-y-4 p-4">
               {displayMessages.map((message, index) => {
                 // Apply min-height to last message only if NOT loading (when loading, the loading indicator gets it)
@@ -298,7 +293,7 @@ export function AIChatBox({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         )}
       </div>
 
@@ -308,27 +303,27 @@ export function AIChatBox({
         onSubmit={handleSubmit}
         className="flex gap-2 p-4 border-t bg-background/50 items-end"
       >
-        <Textarea
+        <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="flex-1 max-h-32 resize-none min-h-9"
+          className="flex-1 max-h-32 min-h-9 resize-none rounded border border-border bg-background px-3 py-2 text-sm"
           rows={1}
         />
-        <Button
+        <button
           type="submit"
-          size="icon"
+          aria-label="Enviar mensagem"
           disabled={!input.trim() || isLoading}
-          className="shrink-0 h-[38px] w-[38px]"
+          className="h-[38px] w-[38px] shrink-0 rounded bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <Send className="size-4" />
           )}
-        </Button>
+        </button>
       </form>
     </div>
   );

@@ -336,7 +336,7 @@ export async function pruneOldMemories(userId: number, maxAgeDays: number = PRUN
     if (error || !candidates) return 0;
 
     // Filtrar apenas as com access_score baixo
-    const toDelete = candidates.filter(c => {
+    const toDelete = candidates.filter((c: { id: string; metadata: unknown }) => {
       const meta = c.metadata as any;
       const score = meta?.access_score ?? 0;
       const lastAccessed = meta?.last_accessed ?? meta?.created_at;
@@ -348,7 +348,7 @@ export async function pruneOldMemories(userId: number, maxAgeDays: number = PRUN
 
     if (toDelete.length === 0) return 0;
 
-    const idsToDelete = toDelete.map(c => c.id);
+    const idsToDelete = toDelete.map((c: { id: string }) => c.id);
     const { error: deleteError, count } = await supabase
       .from("ai_memories")
       .delete()
