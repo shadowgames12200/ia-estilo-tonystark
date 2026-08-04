@@ -38,7 +38,7 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_CONFIG = {
   maxIterations: 3,
   maxToolCalls: 2,
-  model: "llama-3.1-8b-instant",
+  model: "llama-3.3-70b-versatile",
   fastModel: "llama-3.1-8b-instant",
   temperature: 0.6,
   maxTokens: 512,
@@ -127,14 +127,14 @@ type ToolCall = {
 /** Select model based on query complexity */
 function selectModel(content: string): string {
   const lower = content.toLowerCase();
-  const wordCount = content.split(/\s+/).length;
+  
+  // Usar o 70b para quase tudo para garantir melhor qualidade e estabilidade
+  const complexKeywords = ["analise", "relatório", "report", "detail", "detalhe", "complexo"];
+  if (complexKeywords.some((kw) => lower.includes(kw)) || content.length > 100) {
+    return "llama-3.3-70b-versatile";
+  }
 
-  // Todas as conversas vão para o modelo rápido (8b instant ~300 tokens/s)
-  // Só usa o 70b se realmente precisar de análise complexa
-  const complexKeywords = ["analise detalhada", "analise completa", "analyze in detail", "write a full report", "escreva um relatório completo"];
-  if (complexKeywords.some((kw) => lower.includes(kw))) return "llama-3.3-70b-versatile";
-
-  return "llama-3.1-8b-instant";
+  return "llama-3.3-70b-versatile"; // Forçando o 70b por enquanto para teste de estabilidade
 }
 
 /** Check if a message needs tools */
