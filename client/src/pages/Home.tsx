@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { AutoImprovePanel } from "@/components/AutoImprovePanel";
+import { Streamdown } from "streamdown";
 import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
@@ -288,7 +289,9 @@ export default function Home() {
                   <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <span className="font-mono text-[10px] text-cyan-400/30 mb-1 uppercase tracking-widest">{msg.role === "assistant" ? "J.A.R.V.I.S." : "VOCÊ"}</span>
                     <div className={`max-w-[90%] p-4 rounded border ${msg.role === "user" ? "bg-cyan-400/5 border-cyan-400/40 text-cyan-100" : "bg-slate-900/60 border-cyan-400/20 text-cyan-300"}`}>
-                      <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+                      <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed">
+  <Streamdown>{msg.content}</Streamdown>
+</div>
                     </div>
                   </div>
                 ))}
@@ -301,7 +304,9 @@ export default function Home() {
                           <Loader size={12} className="animate-spin" /> <span>PROCESSANDO DADOS...</span>
                         </div>
                       ) : (
-                        <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed whitespace-pre-wrap">{streamingContent}</div>
+                        <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed">
+  <Streamdown>{streamingContent}</Streamdown>
+</div>
                       )}
                     </div>
                   </div>
