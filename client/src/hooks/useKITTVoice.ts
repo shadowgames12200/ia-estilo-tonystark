@@ -19,6 +19,7 @@ export function useKITTVoice() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
+  const isInternalSpeakingRef = useRef(false);
 
   const stop = useCallback(() => {
     if (audioRef.current) {
@@ -28,6 +29,7 @@ export function useKITTVoice() {
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     queueRef.current = [];
+    isInternalSpeakingRef.current = false;
     setIsSpeaking(false);
   }, []);
 
@@ -44,12 +46,17 @@ export function useKITTVoice() {
     utterance.volume = config.volume;
     utterance.lang = currentLanguage;
 
-    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      isInternalSpeakingRef.current = true;
+    };
     utterance.onend = () => {
+      isInternalSpeakingRef.current = false;
       setIsSpeaking(false);
       processQueue();
     };
     utterance.onerror = () => {
+      isInternalSpeakingRef.current = false;
       setIsSpeaking(false);
       processQueue();
     };
@@ -71,18 +78,20 @@ export function useKITTVoice() {
 
       if (!cleanText) return;
 
-      // Se já estiver falando, adiciona à fila
-      if (isSpeaking) {
+      // Se já estiver falando algo, coloca na fila
+      if (isInternalSpeakingRef.current) {
         queueRef.current.push(cleanText);
         return;
       }
 
+      isInternalSpeakingRef.current = true;
       setIsSpeaking(true);
 
       try {
-        // Para qualquer áudio anterior antes de começar um novo
+        // Garantir que qualquer áudio anterior seja destruído
         if (audioRef.current) {
           audioRef.current.pause();
+          audioRef.current.src = "";
           audioRef.current = null;
         }
 
@@ -90,34 +99,44 @@ export function useKITTVoice() {
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
 
-        audio.onplay = () => setIsSpeaking(true);
+        audio.onplay = () => {
+          setIsSpeaking(true);
+          isInternalSpeakingRef.current = true;
+        };
         
         audio.onended = () => {
+          isInternalSpeakingRef.current = false;
           setIsSpeaking(false);
           processQueue();
         };
 
         audio.onerror = () => {
           console.warn("Audio stream error, falling back to browser TTS");
+          isInternalSpeakingRef.current = false;
           speakWithBrowser(cleanText);
         };
 
         await audio.play();
       } catch (error) {
         console.warn("TTS Play failed, falling back to browser", error);
+        isInternalSpeakingRef.current = false;
         speakWithBrowser(cleanText);
       }
     },
-    [isSpeaking, speakWithBrowser]
+    [speakWithBrowser]
   );
 
   const processQueue = useCallback(() => {
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
+      // Pequeno respiro entre frases para naturalidade
       setTimeout(() => {
-        setIsSpeaking(false); 
+        isInternalSpeakingRef.current = false;
         speak(next);
       }, 50);
+    } else {
+      isInternalSpeakingRef.current = false;
+      setIsSpeaking(false);
     }
   }, [speak]);
 

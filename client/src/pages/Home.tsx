@@ -60,8 +60,16 @@ export default function Home() {
     startListening,
     stopListening,
     resetTranscript,
-    setAiSpeakingText,
+    setIgnoreInput,
   } = useSpeechRecognition();
+
+  const handleInterruption = useCallback(() => {
+    if (kittVoice.isSpeaking || isStreaming || isThinking) {
+      kittVoice.stop();
+      aiSpeakingRef.current = false;
+      stopStream();
+    }
+  }, [kittVoice, stopStream]);
 
   const {
     streamingContent,
@@ -74,26 +82,20 @@ export default function Home() {
     (text) => {
       if (voiceEnabled) {
         aiSpeakingRef.current = true;
-        setAiSpeakingText(text); // Informa ao mic o que a IA está falando para filtrar o eco
         kittVoice.speak(text);
       }
     },
     kittVoice.config
   );
 
-  const handleInterruption = useCallback(() => {
-    if (kittVoice.isSpeaking || isStreaming || isThinking) {
-      kittVoice.stop();
-      aiSpeakingRef.current = false;
-      setAiSpeakingText("");
-      stopStream();
-    }
-  }, [kittVoice, isStreaming, isThinking, stopStream, setAiSpeakingText]);
-
   const sendChat = useCallback(
     async (msgs: Array<{ role: string; content: string }>) => {
       if (isProcessingRef.current) return;
       isProcessingRef.current = true;
+      
+      // Quando a IA começa a processar, ignoramos a entrada do mic temporariamente
+      // para evitar que ela "se ouça" internamente
+      setIgnoreInput(true);
       
       handleInterruption();
       
@@ -112,11 +114,12 @@ export default function Home() {
           return next;
         });
       }
+      
       isProcessingRef.current = false;
       aiSpeakingRef.current = false;
-      setAiSpeakingText("");
+      setIgnoreInput(false);
     },
-    [handleInterruption, streamChat, setAiSpeakingText]
+    [handleInterruption, streamChat, setIgnoreInput]
   );
 
   const pendingTextRef = useRef<string>("");
@@ -130,19 +133,10 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
-  // Efeito para sincronizar o estado de fala da IA com o mic
-  useEffect(() => {
-    const isAiTalking = kittVoice.isSpeaking || isStreaming || isThinking;
-    if (!isAiTalking) {
-      setAiSpeakingText("");
-      aiSpeakingRef.current = false;
-    }
-  }, [kittVoice.isSpeaking, isStreaming, isThinking, setAiSpeakingText]);
-
   useEffect(() => {
     if (booted && voiceEnabled && isSpeechSupported && !isListening) {
       startListening((detectedText) => {
-        // Se a IA está falando e detectamos voz do usuário (filtrada pelo Eco Filter), interrompemos
+        // Se a IA está falando e detectamos voz real do usuário, interrompemos
         if (aiSpeakingRef.current) {
           handleInterruption();
         }
@@ -153,6 +147,8 @@ export default function Home() {
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
       const text = pendingTextRef.current.trim();
+      
+      // Filtro de comprimento e eco
       if (text.length < 2) return;
 
       pendingTextRef.current = "";
