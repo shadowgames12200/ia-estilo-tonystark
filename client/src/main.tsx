@@ -1,11 +1,21 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+
+function SimpleApp() {
+  return (
+    <div style={{ color: "cyan", fontFamily: "monospace", display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "black", flexDirection: "column" }}>
+      <h1>J.A.R.V.I.S. REACT 19</h1>
+      <p>React Rendering: SUCCESS</p>
+      <p>Status: OPERATIONAL</p>
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (root) {
-  root.innerHTML = `
-    <div style="color: cyan; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; background: black; flex-direction: column;">
-      <h1>J.A.R.V.I.S. DIAGNOSTIC</h1>
-      <p>Vanilla JS Execution: SUCCESS</p>
-      <p>Time: ${new Date().toLocaleTimeString()}</p>
-    </div>
-  `;
+  ReactDOM.createRoot(root).render(
+    <React.StrictMode>
+      <SimpleApp />
+    </React.StrictMode>
+  );
 }
-console.log("J.A.R.V.I.S. Vanilla Diagnostic Loaded");
