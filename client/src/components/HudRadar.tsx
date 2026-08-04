@@ -21,7 +21,7 @@ export function HudRadar({ size = 200, className = "", isListening = false, isSp
 
     const cx = size / 2;
     const cy = size / 2;
-    const r = size / 2 - 4;
+    const r = Math.max(1, size / 2 - 4);
 
     const blips = Array.from({ length: 6 }, () => ({
       angle: Math.random() * Math.PI * 2,

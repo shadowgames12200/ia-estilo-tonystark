@@ -137,7 +137,7 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
 
     // Inner ring
     ctx.rotate(angleRef.current * 0.8);
-    const innerR = half - 40;
+    const innerR = Math.max(2, half - 40);
     ctx.beginPath();
     ctx.arc(0, 0, innerR, 0, Math.PI * 2);
     ctx.strokeStyle = colors.base;
@@ -152,7 +152,7 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     const innerSegCount = 4;
     for (let i = 0; i < innerSegCount; i++) {
       const angle = (i * Math.PI * 2) / innerSegCount;
-      const inner2 = innerR - 6;
+      const inner2 = Math.max(1, innerR - 6);
       ctx.beginPath();
       ctx.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
       ctx.lineTo(Math.cos(angle) * inner2, Math.sin(angle) * inner2);
