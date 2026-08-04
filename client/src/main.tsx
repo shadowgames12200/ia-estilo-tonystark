@@ -6,6 +6,8 @@ import superjson from "superjson";
 import { trpc } from "./lib/trpc";
 import App from "./App";
 import "./index.css";
+console.log("J.A.R.V.I.S. Loader: Inicilizando...");
+console.log("Root element:", document.getElementById("root"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
