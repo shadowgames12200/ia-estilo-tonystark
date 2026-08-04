@@ -1,39 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink } from "@trpc/client";
-import superjson from "superjson";
-import App from "./App";
-import "./index.css";
-import { trpc } from "./lib/trpc";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-    },
-  },
-});
-
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-    }),
-  ],
-});
+console.log("React starting - Basic Test");
 
 const rootElement = document.getElementById("root");
-if (!rootElement) throw new Error("Root element not found");
-
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </trpc.Provider>
-  </React.StrictMode>
-);
+if (!rootElement) {
+  console.error("Root element not found");
+} else {
+  ReactDOM.createRoot(rootElement).render(
+    <div style={{ color: "white", padding: "20px", background: "red" }}>
+      <h1>J.A.R.V.I.S. REACT TEST</h1>
+      <p>If you see this, React is working.</p>
+    </div>
+  );
+  console.log("React render called");
+}
