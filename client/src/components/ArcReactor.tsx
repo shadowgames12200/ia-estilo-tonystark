@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 export interface ArcReactorState {
   idle: boolean;
@@ -69,9 +69,13 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
 
     const half = size / 2;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    ctx.scale(dpr, dpr);
+    
+    // Only resize if needed to avoid flickering
+    if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      ctx.scale(dpr, dpr);
+    }
 
     ctx.clearRect(0, 0, size, size);
     const cx = half;
@@ -216,27 +220,28 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     }
 
     ctx.globalAlpha = 1;
-
-    if (activeState === "speaking") {
-      animRef.current = requestAnimationFrame(draw);
-    }
   }, [activeState, colors, size]);
 
-  // Start animation loop for speaking state
-  if (activeState === "speaking" && !animRef.current) {
+  // Handle animation and drawing
+  useEffect(() => {
+    let frameId: number;
+    
     const loop = () => {
       draw();
-      if (activeState === "speaking") {
-        animRef.current = requestAnimationFrame(loop);
-      } else {
-        animRef.current = 0;
-      }
+      frameId = requestAnimationFrame(loop);
     };
-    animRef.current = requestAnimationFrame(loop);
-  }
 
-  // Draw on state change
-  draw();
+    if (activeState === "speaking" || activeState === "listening" || activeState === "thinking") {
+      frameId = requestAnimationFrame(loop);
+    } else {
+      // Just draw once for idle
+      draw();
+    }
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [activeState, draw]);
 
   return (
     <div
