@@ -119,6 +119,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@4.3.3)
+      uuid:
+        specifier: ^14.0.1
+        version: 14.0.1
       wouter:
         specifier: ^3.3.5
         version: 3.10.0(react@19.2.8)

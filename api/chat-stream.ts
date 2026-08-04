@@ -29,7 +29,8 @@ Você tem acesso a um sandbox de programação avançada e pode executar código
 
 CAPACIDADES AVANÇADAS:
 - **Visão Computacional:** Você pode analisar imagens e documentos. Se o usuário enviar uma URL de imagem, você pode usar a ferramenta `analyze_image` para descrever o conteúdo ou extrair informações.
-- **Memória Semântica:** Você tem acesso a uma memória de longo prazo que armazena fatos importantes sobre o usuário e suas interações. Use essas memórias para fornecer respostas mais contextuais e personalizadas.`;
+- **Memória Semântica:** Você tem acesso a uma memória de longo prazo que armazena fatos importantes sobre o usuário e suas interações. Use essas memórias para fornecer respostas mais contextuais e personalizadas.
+- **Execução de Código Python:** Você pode executar código Python em um ambiente isolado usando a ferramenta `execute_python`. Use isso para cálculos complexos, análise de dados ou automação.`;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -70,6 +71,21 @@ const VISION_TOOL = {
         imageUrl: { type: "string", description: "A URL pública da imagem ou documento a ser analisado." },
       },
       required: ["imageUrl"],
+    },
+  },
+};
+
+const PYTHON_EXECUTE_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "execute_python",
+    description: "Executa código Python em um ambiente isolado e retorna a saída. Útil para cálculos complexos, análise de dados e automação.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        code: { type: "string", description: "O código Python a ser executado." },
+      },
+      required: ["code"],
     },
   },
 };
@@ -232,6 +248,37 @@ async function searchDuckDuckGo(query: string): Promise<string> {
   }
 }
 
+async function executePython(code: string): Promise<string> {
+  const { exec } = await import("child_process");
+  const { promises: fs } = await import("fs");
+  const path = await import("path");
+  const { v4: uuidv4 } = await import("uuid");
+
+  const tempFileName = `temp_python_script_${uuidv4()}.py`;
+  const tempFilePath = path.join("/tmp", tempFileName);
+
+  try {
+    await fs.writeFile(tempFilePath, code);
+
+    return new Promise((resolve, reject) => {
+      exec(`python3 ${tempFilePath}`, { timeout: 10000 }, (error, stdout, stderr) => {
+        // Limpar o arquivo temporário independentemente do resultado
+        fs.unlink(tempFilePath).catch(console.error);
+
+        if (error) {
+          reject(`Erro de execução Python: ${stderr || error.message}`);
+        } else if (stderr) {
+          resolve(`Saída de erro Python: ${stderr}`);
+        } else {
+          resolve(`Saída Python: ${stdout}`);
+        }
+      });
+    });
+  } catch (err) {
+    return `Erro ao preparar ou executar script Python: ${(err as Error).message}`;
+  }
+}
+
 function executeJs(code: string): string {
   try {
     const result = Function('"use strict"; return (' + code + ')')();
@@ -247,6 +294,8 @@ async function handleToolCall(toolName: string, toolArgs: Record<string, unknown
       return await webSearch(toolArgs.query as string);
     case "execute_js":
       return executeJs(toolArgs.code as string);
+    case "execute_python":
+      return await executePython(toolArgs.code as string);
     case "analyze_image":
       return await analyzeImageWithVision(toolArgs.imageUrl as string);
     default:
@@ -420,7 +469,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       if (shouldUseTools) {
-        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL, VISION_TOOL];
+        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL, VISION_TOOL, PYTHON_EXECUTE_TOOL];
         payload.tool_choice = "auto";
       }
 
