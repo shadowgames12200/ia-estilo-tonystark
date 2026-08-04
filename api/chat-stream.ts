@@ -408,12 +408,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Necessário para embeddings
-
-  if (!OPENAI_API_KEY) {
-    console.error("[Chat Stream] OPENAI_API_KEY not configured for embeddings");
-    return res.status(500).json({ error: "OPENAI_API_KEY not configured for embeddings" });
-  }
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Opcional para embeddings
 
   if (!GROQ_API_KEY) {
     console.error("[Chat Stream] GROQ_API_KEY not configured");
@@ -434,7 +429,16 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const currentUserId = req.body.userId || 1; // Usar 1 como userId padrão se não for fornecido
 
     const lastUserMessageContent = messages.findLast(m => m.role === "user")?.content || "";
-    const memoryContext = await buildMemoryContext(currentUserId, lastUserMessageContent);
+    
+    // Só tenta buscar memória se a chave da OpenAI estiver configurada
+    let memoryContext = "";
+    if (OPENAI_API_KEY) {
+      try {
+        memoryContext = await buildMemoryContext(currentUserId, lastUserMessageContent);
+      } catch (memError) {
+        console.error("[Chat Stream] Erro ao buscar memória semântica:", memError);
+      }
+    }
 
     const systemPromptWithMemory = memoryContext ? `${SYSTEM_PROMPT}\n\n${memoryContext}` : SYSTEM_PROMPT;
 
@@ -576,8 +580,14 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     // If we exhausted iterations without tool calls, end
     res.write(`data: ${JSON.stringify({ type: "done", content: fullResponse, model, iterations: cfg.maxIterations, toolCalls: toolCallCount })}\n\n`);
 
-    // Extrair e salvar novas memórias da conversa
-    await extractAndSaveSemanticMemories(currentUserId, conversationHistory);
+    // Extrair e salvar novas memórias da conversa (apenas se a chave da OpenAI estiver configurada)
+    if (OPENAI_API_KEY) {
+      try {
+        await extractAndSaveSemanticMemories(currentUserId, conversationHistory);
+      } catch (memSaveError) {
+        console.error("[Chat Stream] Erro ao salvar memória semântica:", memSaveError);
+      }
+    }
 
     return res.end();
   } catch (error) {
