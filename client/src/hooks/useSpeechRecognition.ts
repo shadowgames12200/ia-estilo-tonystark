@@ -139,8 +139,11 @@ export function useSpeechRecognition() {
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
+    setIsListening(false);
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
     }
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
