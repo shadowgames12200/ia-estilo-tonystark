@@ -210,7 +210,7 @@ export default function Home() {
   }, [silenceDetected]);
 
   const handleSend = useCallback(
-    (content: string) => {
+    async (content: string) => {
       const trimmed = content.trim();
 
       if (!trimmed && !selectedFile) return; // Não envia se não há texto nem arquivo
