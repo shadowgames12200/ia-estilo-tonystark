@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-const ELEVENLABS_VOICE_ID = "CZu28b9CJ2vLBaXVF9nJ"; // Bella - voz feminina natural para PT-BR
+const ELEVENLABS_VOICE_ID = "IZSifFFhXEvnSbW5DgQl"; // Liam - voz masculina potente e sofisticada para PT-BR (estilo J.A.R.V.I.S./K.I.T.T.)
 const ELEVENLABS_MODEL = "eleven_multilingual_v2"; // Suporta PT-BR nativamente
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
