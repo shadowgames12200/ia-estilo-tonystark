@@ -190,16 +190,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let toolCallCount = 0;
     
+    console.log(`[ChatStream] Starting loop`);
     for (let iteration = 0; iteration < DEFAULT_CONFIG.maxIterations; iteration++) {
       let groqKey = getRandomKey(API_CONFIG.GROQ_KEYS);
       let openaiKey = getRandomKey(API_CONFIG.OPENAI_KEYS);
       
+      console.log(`[ChatStream] Keys status - Groq: ${!!groqKey}, OpenAI: ${!!openaiKey}`);
+
       let response: Response;
       let usedModel = DEFAULT_CONFIG.model;
 
       // Tenta Groq primeiro
       try {
         if (!groqKey) throw new Error("No Groq Key");
+        console.log(`[ChatStream] Fetching Groq: ${GROQ_API_URL}`);
         response = await fetch(GROQ_API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
@@ -210,7 +214,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tools: toolCallCount < DEFAULT_CONFIG.maxToolCalls ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL] : undefined
           }),
         });
-        if (!response.ok) throw new Error(`Groq failed: ${response.status}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq failed: ${response.status} - ${errText}`);
+        }
+        console.log("[ChatStream] Groq response OK");
       } catch (e) {
         console.warn("Groq failed, falling back to OpenAI", e);
         if (!openaiKey) {
@@ -264,7 +272,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: "Erro crítico no sistema." })}\n\n`);
+    console.error("[ChatStream] Critical Error:", error);
+    res.write(`data: ${JSON.stringify({ type: "error", error: `Erro crítico no sistema: ${(error as Error).message}` })}\n\n`);
     res.end();
   }
 }
