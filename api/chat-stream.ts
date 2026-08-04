@@ -493,6 +493,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Make streaming request to Groq
+      console.log(`[Chat Stream] Chamando Groq (iteração ${iteration + 1}) com modelo ${model}...`);
       const groqResponse = await fetch(GROQ_API_URL, {
         method: "POST",
         headers: {
@@ -504,10 +505,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!groqResponse.ok) {
         const errorText = await groqResponse.text();
-        console.error("[Chat Stream] Groq API error:", groqResponse.status, errorText);
-        res.write(`data: ${JSON.stringify({ type: "error", error: `Groq API error: ${groqResponse.status}` })}\n\n`);
+        console.error("[Chat Stream] Erro na API do Groq:", groqResponse.status, errorText);
+        res.write(`data: ${JSON.stringify({ type: "error", error: `Erro na API do Groq: ${groqResponse.status}. Verifique sua chave de API.` })}\n\n`);
         return res.end();
       }
+      console.log("[Chat Stream] Groq respondeu OK, iniciando processamento do stream...");
 
       // Process the streaming response
       let toolCallsDetected: ToolCall[] | null = null;

@@ -10,3 +10,9 @@ export const sdk = {
     return `mock-session-token-${userId}`;
   },
 };
+
+// Adicionando export ausente usado em api/chat-stream.ts
+export async function getUserFromRequest(req: any): Promise<User | null> {
+  console.warn("getUserFromRequest: mockado. Retornando null.");
+  return null;
+}
