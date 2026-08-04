@@ -90,7 +90,7 @@ export function BootSequence({ onComplete }: BootSequenceProps) {
       {/* Bottom bar */}
       <div className="absolute bottom-8 left-0 right-0 flex justify-center">
         <div className="text-cyan-400/30 font-mono text-xs tracking-widest">
-          STARK INDUSTRIES — INTERFACE JARVIS v7.3
+          INDÚSTRIAS STARK — INTERFACE J.A.R.V.I.S. v7.3
         </div>
       </div>
     </div>

@@ -86,7 +86,7 @@ export function AutoImprovePanel() {
         {!isActive && !done && (
           <div className="p-3 space-y-2">
             <p className="font-mono text-[10px] text-cyan-400/40">
-              Peça ao JARVIS para se melhorar. Ex: "Melhora a velocidade de resposta"
+              Peça ao J.A.R.V.I.S. para se melhorar. Ex: "Melhora a velocidade de resposta"
             </p>
             <div className="flex gap-2">
               <input

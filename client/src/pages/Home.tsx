@@ -16,10 +16,10 @@ type Message = {
 };
 
 const SUGGESTED_PROMPTS = [
-  "What are your current system diagnostics?",
-  "Analyze the latest global threat assessments.",
-  "Run a full scan of the Stark Tower perimeter.",
-  "What is the status of the Mark L armor?",
+  "Quais são seus diagnósticos de sistema atuais?",
+  "Analise as últimas avaliações de ameaças globais.",
+  "Execute uma varredura completa do perímetro da Torre Stark.",
+  "Qual é o status da armadura Mark L?",
 ];
 
 function useDeviceType() {
@@ -377,7 +377,7 @@ export default function Home() {
                   J.A.R.V.I.S.
                 </h1>
                 <p className="font-mono text-[9px] text-cyan-400/40 tracking-wider">
-                  STARK INDUSTRIES AI
+                  IA INDÚSTRIAS STARK
                 </p>
               </div>
             </div>
@@ -393,7 +393,7 @@ export default function Home() {
                     "bg-green-400"
                   }`} />
                   <span className="text-cyan-400/60">
-                    {isThinking ? "THINKING..." : isStreaming ? "TRANSMITTING" : isListening ? "LISTENING" : "STANDBY"}
+                    {isThinking ? "PENSANDO..." : isStreaming ? "TRANSMITINDO" : isListening ? "OUVINDO" : "AGUARDANDO"}
                   </span>
                 </div>
                 {currentModel && (
@@ -463,7 +463,7 @@ export default function Home() {
                 }`}
               >
                 {voiceEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
-                <span className="hidden sm:inline">{voiceEnabled ? "VOICE ON" : "VOICE OFF"}</span>
+                <span className="hidden sm:inline">{voiceEnabled ? "VOZ ATIVA" : "VOZ DESATIVADA"}</span>
               </button>
 
               {/* Stop button */}
@@ -547,7 +547,7 @@ export default function Home() {
                       </div>
                     </div>
                     <h2 className="text-lg sm:text-xl font-black tracking-widest text-cyan-300 text-glow-cyan mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
-                      SYSTEMS ONLINE
+                      SISTEMAS ONLINE
                     </h2>
                     <p className="font-mono text-xs sm:text-sm text-cyan-400/50 max-w-md">
                       J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.
@@ -652,7 +652,7 @@ export default function Home() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder="Enter command, Sir..."
+                      placeholder="Digite seu comando, Senhor..."
                       rows={1}
                       disabled={isLoading}
                       className={`w-full bg-transparent border-0 outline-none resize-none font-mono text-cyan-100 placeholder:text-cyan-400/30 py-2 px-1 max-h-24 ${isMobile ? "text-xs" : "text-sm"}`}
@@ -679,12 +679,12 @@ export default function Home() {
                     className={`flex items-center gap-1.5 sm:gap-2 rounded border border-cyan-400/50 text-cyan-300 bg-cyan-400/10 font-mono tracking-widest hover:bg-cyan-400/20 hover:border-cyan-400/80 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 glow-cyan ${isMobile ? "px-3 py-2 text-[10px]" : "px-4 py-2 text-xs"}`}
                   >
                     <Send size={10} />
-                    <span className="hidden sm:inline">TRANSMIT</span>
+                    <span className="hidden sm:inline">ENVIAR</span>
                   </button>
                 </div>
                 <div className="flex items-center justify-between mt-1.5 font-mono text-cyan-400/25">
-                  <span className={`text-[9px] sm:text-xs`}>PRESS ENTER TO SEND</span>
-                  <span className={`text-[9px] sm:text-xs`}>{input.length} CHARS</span>
+                  <span className={`text-[9px] sm:text-xs`}>PRESSIONE ENTER PARA ENVIAR</span>
+                  <span className={`text-[9px] sm:text-xs`}>{input.length} CARACTERES</span>
                 </div>
                 {isListening && (
                   <div className="mt-2 p-2 rounded border border-red-400/30 bg-red-400/5">

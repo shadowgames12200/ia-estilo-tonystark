@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-const ELEVENLABS_VOICE_ID = "pNInz6obpgDQGcFmaJgB"; // Adam voice ID
+const ELEVENLABS_VOICE_ID = "CZu28b9CJ2vLBaXVF9nJ"; // Bella - voz feminina natural para PT-BR
 const ELEVENLABS_MODEL = "eleven_multilingual_v2"; // Suporta PT-BR nativamente
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -45,11 +45,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({
           text: cleanText,
           model_id: ELEVENLABS_MODEL,
-          language_code: "pt", // Forçar português
+          language_code: "pt", // Forçar português brasileiro
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            style: 0.3,
+            stability: 0.6,
+            similarity_boost: 0.85,
+            style: 0.4,
             use_speaker_boost: true,
           },
         }),

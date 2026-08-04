@@ -1,0 +1,54 @@
+=== LISTA COMPLETA DE MUDANÇAS REALIZADAS ===
+
+ARQUIVOS MODIFICADOS:
+1. client/src/pages/Home.tsx
+2. client/src/components/BootSequence.tsx
+3. client/src/pages/NotFound.tsx
+4. client/src/components/AutoImprovePanel.tsx
+5. api/chat-stream.ts
+6. api/chat.ts
+7. api/tts.ts
+8. api/tts-stream.ts
+
+RESUMO DAS ALTERAÇÕES:
+
+[INTERFACE - Home.tsx]
+- Prompts sugeridos: Traduzidos para português
+- Status indicators: THINKING → PENSANDO, TRANSMITTING → TRANSMITINDO, etc.
+- Botões: VOICE ON/OFF → VOZ ATIVA/VOZ DESATIVADA, TRANSMIT → ENVIAR
+- Placeholder: "Enter command, Sir..." → "Digite seu comando, Senhor..."
+- Branding: "STARK INDUSTRIES AI" → "IA INDÚSTRIAS STARK"
+- Instruções: "PRESS ENTER TO SEND" → "PRESSIONE ENTER PARA ENVIAR"
+
+[BOOT SEQUENCE - BootSequence.tsx]
+- Footer: "STARK INDUSTRIES — INTERFACE JARVIS v7.3" → "INDÚSTRIAS STARK — INTERFACE J.A.R.V.I.S. v7.3"
+
+[404 PAGE - NotFound.tsx]
+- "SECTOR NOT FOUND" → "SETOR NÃO ENCONTRADO"
+- "cannot locate the requested resource" → "não consegue localizar o recurso solicitado"
+- "RETURN TO BASE" → "RETORNAR À BASE"
+
+[AUTO IMPROVE PANEL - AutoImprovePanel.tsx]
+- Dica: "Peça ao JARVIS" → "Peça ao J.A.R.V.I.S."
+
+[PERSONALIDADE - chat-stream.ts & chat.ts]
+- Removida referência exclusiva a Tony Stark
+- Novo tom: assistente amigável e natural
+- Adicionada consciência cultural brasileira
+- Saudação: "Oi! Como posso ajudá-lo?"
+- Linguagem natural e coloquial
+
+[VOZ - tts.ts & tts-stream.ts]
+- Voice ID: pNInz6obpgDQGcFmaJgB (Adam) → CZu28b9CJ2vLBaXVF9nJ (Bella)
+- Stability: 0.5 → 0.6
+- Similarity Boost: 0.8 → 0.85
+- Style: 0.3 → 0.4
+
+PRÓXIMO PASSO:
+Execute os comandos abaixo para fazer push das mudanças:
+
+git add -A
+git commit -m "Adaptar interface, voz e personalidade para português brasileiro"
+git push origin main
+
+Depois, faça deploy na Vercel conforme instruções em ADAPTACOES_PT_BR.md
