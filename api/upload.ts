@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabase } from "../server/_core/supabaseClient";
+import { supabase } from "../server/_core/supabaseClient.js";
 import { IncomingForm } from "formidable";
 import { promises as fs } from "fs";
 import path from "path";
