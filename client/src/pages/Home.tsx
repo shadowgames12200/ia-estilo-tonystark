@@ -156,9 +156,9 @@ export default function Home() {
     startListening(() => {
       if (aiSpeakingRef.current) handleInterruption();
     });
-    startMonitoring();
+    // startMonitoring(); // Desativado temporariamente para evitar conflito de microfone
 
-    return () => { stopMonitoring(); };
+    return () => { /* stopMonitoring(); */ };
   }, [booted, voiceEnabled, isSpeechSupported]);
 
   useEffect(() => {
