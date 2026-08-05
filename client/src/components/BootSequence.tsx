@@ -33,14 +33,16 @@ export function BootSequence({ onComplete }: BootSequenceProps) {
 
     const line = BOOT_LINES[currentLine];
     if (typedChars < line.length) {
-      const t = setTimeout(() => setTypedChars((c) => c + 1), 18);
+      // Velocidade de digitação aumentada (de 18ms para 8ms)
+      const t = setTimeout(() => setTypedChars((c) => c + 1), 8);
       return () => clearTimeout(t);
     } else {
+      // Intervalo entre linhas reduzido (de 120ms para 40ms)
       const t = setTimeout(() => {
         setLines((prev) => [...prev, line]);
         setCurrentLine((c) => c + 1);
         setTypedChars(0);
-      }, 120);
+      }, 40);
       return () => clearTimeout(t);
     }
   }, [currentLine, typedChars, onComplete]);
