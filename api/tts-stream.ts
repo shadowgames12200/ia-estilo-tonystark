@@ -1,8 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { API_CONFIG } from "../server/_core/api-config.js";
 
+// Voz personalizada do JARVIS (ID de voz britânica sofisticada ou clonada)
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB"; 
-const ELEVENLABS_MODEL = "eleven_multilingual_v2";
+// Usando o modelo Turbo v2.5 ou Flash v2.5 para latência ultra-baixa (<100ms)
+const ELEVENLABS_MODEL = "eleven_flash_v2_5";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Suporta POST (body) ou GET (query params) para facilitar streaming direto
@@ -41,12 +43,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             model_id: ELEVENLABS_MODEL,
             language_code: "pt",
             voice_settings: { 
-              stability: 0.5, 
-              similarity_boost: 0.8, 
-              style: 0.0, 
+              stability: 0.45, // Menor estabilidade = mais expressividade humana
+              similarity_boost: 0.85, 
+              style: 0.05, 
               use_speaker_boost: true 
             },
-            latency_optimization: 4, // Otimização máxima de latência (nível 4)
+            latency_optimization: 4, // Nível 4 para resposta instantânea
           }),
         }
       );

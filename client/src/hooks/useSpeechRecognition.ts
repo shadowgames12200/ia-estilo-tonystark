@@ -25,10 +25,10 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-// ULTRA-LOW LATENCY: 800ms silence detection
-const SILENCE_TIMEOUT_MS = 800;
-// Fast re-ack: immediately flag silence when user stops mid-sentence
-const INTERIM_SILENCE_MS = 500;
+// NÍVEL JARVIS: 400ms para resposta quase instantânea após você parar de falar
+const SILENCE_TIMEOUT_MS = 400;
+// Detecção de pausa curta para processamento ultra-rápido
+const INTERIM_SILENCE_MS = 300;
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);

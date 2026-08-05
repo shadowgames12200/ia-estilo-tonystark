@@ -45,37 +45,14 @@ export function useKITTVoice() {
     setIsSpeaking(false);
   }, []);
 
-  // ─── Fallback instantâneo para frases curtas (< 30 chars) ───
+  // ─── Fallback desativado para manter identidade única do JARVIS ───
   const speakWithBrowser = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) return;
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voice = selectBestVoiceForLanguage(currentLanguage);
-    if (voice) utterance.voice = voice;
-
-    utterance.rate = config.rate;
-    utterance.pitch = config.pitch;
-    utterance.volume = config.volume;
-    utterance.lang = currentLanguage;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      isInternalSpeakingRef.current = true;
-    };
-    utterance.onend = () => {
-      isInternalSpeakingRef.current = false;
-      setIsSpeaking(false);
-      processQueue();
-    };
-    utterance.onerror = () => {
-      isInternalSpeakingRef.current = false;
-      setIsSpeaking(false);
-      processQueue();
-    };
-
-    window.speechSynthesis.speak(utterance);
-  }, [currentLanguage, config]);
+    console.warn("Browser fallback ignorado para manter a voz real do JARVIS.");
+    // Não fazemos nada aqui para evitar vozes robóticas do navegador
+    isInternalSpeakingRef.current = false;
+    setIsSpeaking(false);
+    processQueue();
+  }, []);
 
   /**
    * Pipeline de streaming contínuo — processa texto em tempo real
@@ -135,9 +112,10 @@ export function useKITTVoice() {
         };
 
         audio.onerror = () => {
-          console.warn("TTS stream failed, using browser fallback");
+          console.error("Erro crítico no stream de voz do JARVIS.");
           isInternalSpeakingRef.current = false;
-          speakWithBrowser(cleanText);
+          // Tentar processar próxima frase se houver, mas não usar voz robótica
+          processQueue();
         };
 
         await audio.play();

@@ -121,15 +121,13 @@ export function useStreamingChatWithVoice(
                       const currentLatency = Date.now() - startTimeRef.current;
                       setLatencyMs(currentLatency);
 
-                      // PIPELINE STREAMING CONTÍNUO:
-                      // Threshold otimizado: 15 chars + pontuação (era 60)
-                      // Frases curtas (<30 chars) são enviadas IMEDIATAMENTE
+                      // PIPELINE DE VOZ JARVIS:
+                      // Otimizado para não ter "buracos" na fala, mas começar rápido.
                       const sb = sentenceBufferRef.current;
-                      const isShortPhrase = sb.length <= 30;
-                      const hasPunctuation = sb.match(/[.!?;]\s*$/);
-                      const meetsThreshold = sb.length > 15;
+                      const hasPunctuation = sb.match(/[.!?;,]\s*$/);
+                      const isLongEnough = sb.length > 25; // Um pouco mais longo para evitar quebras estranhas
 
-                      if (isShortPhrase || hasPunctuation || (meetsThreshold && sb.match(/[,]\s*$/))) {
+                      if (hasPunctuation || isLongEnough) {
                         const textToSpeak = sb.trim();
                         if (textToSpeak) {
                           onSpeak(textToSpeak, voiceConfig);
