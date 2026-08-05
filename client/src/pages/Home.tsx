@@ -176,6 +176,11 @@ export default function Home() {
     }
   }, [interimTranscript, transcript]);
 
+  // Sincronizar VAD com SpeechRecognition
+  useEffect(() => {
+    setUserSpeakingStatus(isUserSpeaking);
+  }, [isUserSpeaking, setUserSpeakingStatus]);
+
   useEffect(() => {
     const isAiTalking = kittVoice.isSpeaking || isStreaming || isThinking;
     if (isAiTalking) {
@@ -185,22 +190,32 @@ export default function Home() {
       const t = setTimeout(() => {
         aiSpeakingRef.current = false;
         setAISpeakingStatus(false);
-      }, 300); // Reduced delay
+      }, 300);
       return () => clearTimeout(t);
     }
   }, [kittVoice.isSpeaking, isStreaming, isThinking, setAISpeakingStatus]);
 
+  // CORREÇÃO: Iniciar ambos os hooks de forma controlada e sincronizada
   useEffect(() => {
-    if (booted && voiceEnabled && isSpeechSupported && !isListening) {
-      startListening(() => {
-        if (aiSpeakingRef.current) {
-          handleInterruption();
-        }
-      });
-      startMonitoring();
-    }
-    return () => stopMonitoring();
-  }, [booted, voiceEnabled, isSpeechSupported, isListening, startListening, startMonitoring, stopMonitoring, handleInterruption]);
+    if (!booted || !voiceEnabled || !isSpeechSupported) return;
+
+    // Se já está ouvindo, não inicia de novo
+    if (isListening) return;
+
+    // Iniciar SpeechRecognition
+    startListening(() => {
+      if (aiSpeakingRef.current) {
+        handleInterruption();
+      }
+    });
+
+    // Iniciar VAD (agora não compete com SpeechRecognition)
+    startMonitoring();
+
+    return () => {
+      stopMonitoring();
+    };
+  }, [booted, voiceEnabled, isSpeechSupported]);
 
   useEffect(() => {
     if (silenceDetected && pendingTextRef.current.trim() && !isProcessingRef.current) {
@@ -255,7 +270,6 @@ export default function Home() {
         try {
           setUploading(true);
           const formData = new FormData();
-          // Convert base64 to blob
           const response = await fetch(pendingImage);
           const blob = await response.blob();
           formData.append("file", blob, "image.png");
@@ -334,7 +348,6 @@ export default function Home() {
       };
       reader.readAsDataURL(imageFile);
     } else {
-      // For non-image files, just include the name in the message
       const fileNames = files.map(f => f.name).join(", ");
       setInput(prev => prev + `\n[Arquivo: ${fileNames}]`);
     }
@@ -472,7 +485,8 @@ export default function Home() {
               <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                 {messages.length === 0 && !isThinking && !isStreaming && (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8">
-                    <ArcReactor state={reactorState} onClick={handleMicClick} size={160} className="mb-6" />
+                    {/* ESFERA MAIOR: 280px (era 160px) */}
+                    <ArcReactor state={reactorState} onClick={handleMicClick} size={280} className="mb-6" />
                     <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
                     <p className="font-mono text-sm text-cyan-400/50 max-w-md">J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.</p>
                     <p className="font-mono text-[10px] text-cyan-400/30 mt-4">ARRASTE UMA IMAGEM PARA ANÁLISE VISUAL</p>

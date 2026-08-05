@@ -25,7 +25,7 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-// ULTRA-LOW LATENCY: 800ms silence detection (was 1500ms)
+// ULTRA-LOW LATENCY: 800ms silence detection
 const SILENCE_TIMEOUT_MS = 800;
 // Fast re-ack: immediately flag silence when user stops mid-sentence
 const INTERIM_SILENCE_MS = 500;
@@ -39,6 +39,7 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
+  const isRunningRef = useRef(false); // PREVENIR double-start
 
   const onVoiceDetectedRef = useRef<((text: string) => void) | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,17 +60,17 @@ export function useSpeechRecognition() {
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "pt-BR";
+      // Desabilitar o filtro de gramática para aceitar qualquer fala
+      recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setIsListening(true);
         setError(null);
         setSilenceDetected(false);
+        isRunningRef.current = true;
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // --- FILTRO BIOMÉTRICO ---
-        if (!isUserSpeakingRef.current) return;
-
         let interim = "";
         let final = "";
 
@@ -111,25 +112,49 @@ export function useSpeechRecognition() {
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.warn("SpeechRecognition error:", event.error);
+        // Não tratar no-speech como erro fatal
         if (event.error === "no-speech") return;
         if (event.error === "audio-capture") {
           setError("Microfone não encontrado");
         } else if (event.error === "not-allowed") {
           setError("Permissão do microfone negada");
+        } else if (event.error === "aborted") {
+          // Abort normal, não é erro
+          return;
         } else {
+          // Log mas não parar o serviço
+          console.warn("Speech error (non-fatal):", event.error);
           setError(event.error);
         }
-        setIsListening(false);
+        // NÃO parar isListening aqui — deixa o restart cuidar
       };
 
       recognition.onend = () => {
+        isRunningRef.current = false;
         setIsListening(false);
+
         if (shouldRestartRef.current) {
+          // Usar delay mais longo para evitar loop de restart rápido
           setTimeout(() => {
             try {
-              if (recognitionRef.current) recognitionRef.current.start();
-            } catch (e) {}
-          }, 100); // Faster restart
+              if (recognitionRef.current && !isRunningRef.current) {
+                recognitionRef.current.start();
+              }
+            } catch (e) {
+              console.warn("Restart failed, retrying in 500ms:", e);
+              setTimeout(() => {
+                try {
+                  if (recognitionRef.current && !isRunningRef.current) {
+                    recognitionRef.current.start();
+                  }
+                } catch (e2) {
+                  // Desiste após 2 tentativas
+                  console.error("SpeechRecognition restart failed completely", e2);
+                }
+              }, 500);
+            }
+          }, 500); // 500ms delay para evitar loop
         }
       };
     }
@@ -137,25 +162,37 @@ export function useSpeechRecognition() {
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
-      if (recognitionRef.current) recognitionRef.current.abort();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+      isRunningRef.current = false;
     };
   }, []);
 
   const startListening = useCallback((onVoiceDetected?: (text: string) => void) => {
     if (onVoiceDetected) onVoiceDetectedRef.current = onVoiceDetected;
     if (recognitionRef.current) {
+      // Se já está rodando, não reinicia
+      if (isRunningRef.current) return;
+
       setTranscript("");
       setInterimTranscript("");
       setSilenceDetected(false);
       shouldRestartRef.current = true;
       try {
         recognitionRef.current.start();
-      } catch (e) {}
+      } catch (e) {
+        // Já está rodando, ignora
+        console.warn("SpeechRecognition already started:", e);
+      }
     }
   }, []);
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
+    isRunningRef.current = false;
     setIsListening(false);
     if (recognitionRef.current) {
       try {
