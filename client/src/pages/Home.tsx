@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { HudRadar } from "@/components/HudRadar";
 import { BootSequence } from "@/components/BootSequence";
 import { AutoImprovePanel } from "@/components/AutoImprovePanel";
 import { ArcReactor, type ArcReactorState } from "@/components/ArcReactor";
 import { Streamdown } from "streamdown";
-import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload } from "lucide-react";
+import { Send, Volume2, VolumeX, Mic, Power, Loader, Globe, Cpu, Search, Zap, Upload, Image, X, Clock } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
@@ -15,6 +15,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  image?: string;
 };
 
 const MAX_HISTORY = 10;
@@ -46,12 +47,23 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // ─── Multi-modal state ───
+  const [dragOver, setDragOver] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // ─── Latency state ───
+  const [currentLatency, setCurrentLatency] = useState<number | null>(null);
+  const [currentModel, setCurrentModel] = useState<string>("");
+  const [currentProvider, setCurrentProvider] = useState<string>("");
+
   const aiSpeakingRef = useRef(false);
   const isProcessingRef = useRef(false);
 
   const kittVoice = useKITTVoice();
   const { isMobile, isTablet, isDesktop } = useDeviceType();
-  const { isUserSpeaking, startMonitoring, stopMonitoring } = useVoiceActivity(0.06);
+  const { isUserSpeaking, startMonitoring, stopMonitoring, setBargeInHandler, setAISpeakingStatus } = useVoiceActivity(0.06);
 
   const {
     transcript,
@@ -65,25 +77,50 @@ export default function Home() {
     setUserSpeakingStatus,
   } = useSpeechRecognition();
 
-  useEffect(() => {
-    setUserSpeakingStatus(isUserSpeaking);
-  }, [isUserSpeaking, setUserSpeakingStatus]);
-
+  // ─── Latency callback from streaming hook ───
   const {
     streamingContent,
     isStreaming,
     isThinking,
+    currentModel: streamingModel,
+    latencyMs,
     streamChat,
     stopStream,
   } = useStreamingChatWithVoice(
     (text) => {
       if (voiceEnabled) {
         aiSpeakingRef.current = true;
+        setAISpeakingStatus(true);
         kittVoice.speak(text);
       }
     },
-    kittVoice.config
+    kittVoice.config,
+    () => {
+      // Barge-in handler: quando o usuário fala enquanto IA fala
+      handleInterruption();
+    }
   );
+
+  // Track model info from stream
+  useEffect(() => {
+    if (streamingModel) {
+      setCurrentModel(streamingModel);
+    }
+  }, [streamingModel]);
+
+  // Track latency from stream
+  useEffect(() => {
+    if (latencyMs) {
+      setCurrentLatency(latencyMs);
+    }
+  }, [latencyMs]);
+
+  // ─── Barge-in setup ───
+  useEffect(() => {
+    setBargeInHandler(() => {
+      handleInterruption();
+    });
+  }, []);
 
   const reactorState: ArcReactorState = {
     idle: !isListening && !isThinking && !isStreaming && !kittVoice.isSpeaking,
@@ -96,14 +133,16 @@ export default function Home() {
     if (kittVoice.isSpeaking || isStreaming || isThinking) {
       kittVoice.stop();
       aiSpeakingRef.current = false;
+      setAISpeakingStatus(false);
       stopStream();
     }
-  }, [kittVoice, stopStream, isStreaming, isThinking]);
+  }, [kittVoice, stopStream, isStreaming, isThinking, setAISpeakingStatus]);
 
   const sendChat = useCallback(
-    async (history: Array<{ role: string; content: string }>) => {
+    async (history: Array<{ role: string; content: string }>, image?: string) => {
       if (isProcessingRef.current) return;
       isProcessingRef.current = true;
+      setCurrentLatency(null);
       try {
         const response = await streamChat(history);
         if (response) {
@@ -141,13 +180,15 @@ export default function Home() {
     const isAiTalking = kittVoice.isSpeaking || isStreaming || isThinking;
     if (isAiTalking) {
       aiSpeakingRef.current = true;
+      setAISpeakingStatus(true);
     } else {
       const t = setTimeout(() => {
         aiSpeakingRef.current = false;
-      }, 500);
+        setAISpeakingStatus(false);
+      }, 300); // Reduced delay
       return () => clearTimeout(t);
     }
-  }, [kittVoice.isSpeaking, isStreaming, isThinking]);
+  }, [kittVoice.isSpeaking, isStreaming, isThinking, setAISpeakingStatus]);
 
   useEffect(() => {
     if (booted && voiceEnabled && isSpeechSupported && !isListening) {
@@ -181,7 +222,7 @@ export default function Home() {
         content: text,
         timestamp: new Date(),
       };
-      
+
       setMessages((prev) => {
         const newMsgs = [...prev, userMsg];
         setTimeout(() => {
@@ -207,12 +248,40 @@ export default function Home() {
       const currentMessages = [...messages, userMsg];
       setMessages(currentMessages);
       setInput("");
-      
+
+      // Upload image if pending
+      let imageUrl: string | undefined = pendingImage;
+      if (pendingImage && !pendingImage.startsWith("http")) {
+        try {
+          setUploading(true);
+          const formData = new FormData();
+          // Convert base64 to blob
+          const response = await fetch(pendingImage);
+          const blob = await response.blob();
+          formData.append("file", blob, "image.png");
+
+          const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+          const uploadData = await uploadRes.json();
+          if (uploadData.url) {
+            imageUrl = uploadData.url;
+          }
+        } catch (e) {
+          console.error("Upload failed:", e);
+        }
+        setUploading(false);
+      }
+
+      setPendingImage(null);
+      setPendingFileName(null);
+
       setTimeout(() => {
-        sendChat(currentMessages.map((m) => ({ role: m.role, content: m.content })));
+        sendChat(
+          currentMessages.map((m) => ({ role: m.role, content: m.content })),
+          imageUrl
+        );
       }, 10);
     },
-    [messages, sendChat, handleInterruption]
+    [messages, sendChat, handleInterruption, pendingImage]
   );
 
   const handleMicClick = useCallback(() => {
@@ -237,6 +306,58 @@ export default function Home() {
     }
   };
 
+  // ─── Drag and Drop ───
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find(f => f.type.startsWith("image/"));
+    if (imageFile) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPendingImage(ev.target?.result as string);
+        setPendingFileName(imageFile.name);
+      };
+      reader.readAsDataURL(imageFile);
+    } else {
+      // For non-image files, just include the name in the message
+      const fileNames = files.map(f => f.name).join(", ");
+      setInput(prev => prev + `\n[Arquivo: ${fileNames}]`);
+    }
+  }, []);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPendingImage(ev.target?.result as string);
+        setPendingFileName(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = "";
+  }, []);
+
+  const clearPendingImage = useCallback(() => {
+    setPendingImage(null);
+    setPendingFileName(null);
+  }, []);
+
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem("jarvis-history");
@@ -253,12 +374,42 @@ export default function Home() {
 
   const showLeftPanel = isDesktop || isTablet;
 
+  // Format latency
+  const formatLatency = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  // Get latency color
+  const getLatencyColor = (ms: number) => {
+    if (ms < 300) return "text-green-400";
+    if (ms < 600) return "text-cyan-400";
+    if (ms < 1000) return "text-amber-400";
+    return "text-red-400";
+  };
+
   return (
     <>
       {!booted && <BootSequence onComplete={() => setBooted(true)} />}
-      <div className="min-h-screen w-full relative overflow-hidden scanlines" style={{ background: "#000814" }}>
+      <div
+        className="min-h-screen w-full relative overflow-hidden scanlines"
+        style={{ background: "#000814" }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay */}
+        {dragOver && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-cyan-400/10 backdrop-blur-sm border-2 border-dashed border-cyan-400/50">
+            <div className="flex flex-col items-center gap-3">
+              <Image size={48} className="text-cyan-400" />
+              <span className="font-mono text-lg text-cyan-300 tracking-widest">SOLTE A IMAGEM PARA ANÁLISE</span>
+            </div>
+          </div>
+        )}
+
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px)`, backgroundSize: isMobile ? "20px 20px" : "40px 40px" }} />
-        
+
         <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-cyan-400/50 pointer-events-none" />
         <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-cyan-400/50 pointer-events-none" />
         <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-cyan-400/50 pointer-events-none" />
@@ -275,6 +426,22 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* ─── Latency indicator (real-time) ─── */}
+              {currentLatency !== null && (
+                <div className="hidden md:flex items-center gap-1.5 font-mono text-xs border border-cyan-400/20 rounded px-2 py-1">
+                  <Clock size={10} className={getLatencyColor(currentLatency)} />
+                  <span className={getLatencyColor(currentLatency)}>{formatLatency(currentLatency)}</span>
+                </div>
+              )}
+
+              {/* ─── Model indicator ─── */}
+              {currentModel && (
+                <div className="hidden lg:flex items-center gap-1.5 font-mono text-[10px] text-cyan-400/40 border border-cyan-400/10 rounded px-2 py-1">
+                  <Cpu size={10} />
+                  <span>{currentModel}</span>
+                </div>
+              )}
+
               <div className="hidden md:flex items-center gap-4 font-mono text-xs text-cyan-400/60">
                 <div className="flex items-center gap-1.5">
                   <div className={`w-1.5 h-1.5 rounded-full ${isThinking ? "bg-amber-400 animate-pulse" : isStreaming ? "bg-cyan-400 animate-pulse" : isListening ? "bg-red-400 animate-pulse" : "bg-green-400"}`} />
@@ -295,7 +462,7 @@ export default function Home() {
             {showLeftPanel && (
               <div className="w-64 flex flex-col gap-4">
                 <div className="flex-1 border border-cyan-400/20 bg-slate-900/40 rounded p-4 relative overflow-hidden">
-                  <HudRadar isThinking={isThinking || isStreaming} />
+                  <HudRadar isListening={isListening} isThinking={isThinking || isStreaming} isSpeaking={kittVoice.isSpeaking} />
                 </div>
                 <AutoImprovePanel />
               </div>
@@ -308,12 +475,16 @@ export default function Home() {
                     <ArcReactor state={reactorState} onClick={handleMicClick} size={160} className="mb-6" />
                     <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
                     <p className="font-mono text-sm text-cyan-400/50 max-w-md">J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.</p>
+                    <p className="font-mono text-[10px] text-cyan-400/30 mt-4">ARRASTE UMA IMAGEM PARA ANÁLISE VISUAL</p>
                   </div>
                 )}
                 {messages.map((msg, i) => (
                   <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <span className="font-mono text-[10px] text-cyan-400/30 mb-1 uppercase tracking-widest">{msg.role === "assistant" ? "J.A.R.V.I.S." : "VOCÊ"}</span>
                     <div className={`max-w-[90%] p-4 rounded border ${msg.role === "user" ? "bg-cyan-400/5 border-cyan-400/40 text-cyan-100" : "bg-slate-900/60 border-cyan-400/20 text-cyan-300"}`}>
+                      {msg.image && (
+                        <img src={msg.image} alt="Imagem enviada" className="max-w-[300px] rounded border border-cyan-400/20 mb-3" />
+                      )}
                       <div className="prose prose-invert prose-cyan max-w-none text-sm leading-relaxed">
                         <Streamdown>{msg.content}</Streamdown>
                       </div>
@@ -348,14 +519,50 @@ export default function Home() {
                     <p className="min-h-[1.2em]">{transcript} <span className="opacity-40">{interimTranscript}</span></p>
                   </div>
                 )}
-                
+
+                {/* Pending image preview */}
+                {pendingImage && (
+                  <div className="mb-3 p-2 border border-cyan-400/30 bg-cyan-400/5 rounded flex items-center gap-3">
+                    <img src={pendingImage} alt="Preview" className="w-16 h-16 rounded object-cover border border-cyan-400/20" />
+                    <div className="flex-1">
+                      <span className="font-mono text-xs text-cyan-300">{pendingFileName || "Imagem pronta para análise"}</span>
+                    </div>
+                    <button onClick={clearPendingImage} className="text-red-400 hover:text-red-300">
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {uploading && (
+                  <div className="mb-3 p-2 border border-amber-400/30 bg-amber-400/5 rounded font-mono text-xs text-amber-300 flex items-center gap-2">
+                    <Loader size={12} className="animate-spin" /> <span>ENVANDO ARQUIVO...</span>
+                  </div>
+                )}
+
                 <div className="relative flex items-end gap-2 bg-slate-900/60 border border-cyan-400/20 rounded p-2 focus-within:border-cyan-400/50 transition-colors">
+                  <button
+                    onClick={() => {
+                      const fileInput = document.getElementById("file-input");
+                      fileInput?.click();
+                    }}
+                    className="p-2 rounded bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 transition-all"
+                    title="Anexar imagem"
+                  >
+                    <Image size={18} />
+                  </button>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileInput}
+                  />
                   <textarea
                     ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Envie um comando..."
+                    placeholder="Envie um comando... (Arraste uma imagem para análise)"
                     className="flex-1 bg-transparent border-none focus:ring-0 text-cyan-100 placeholder:text-cyan-400/20 py-2 px-3 resize-none font-mono text-sm max-h-32"
                     rows={1}
                   />
@@ -371,10 +578,12 @@ export default function Home() {
                   <div className="flex gap-4">
                     <span>PROTOCOLO: STARK-7-G</span>
                     <span>ENCRIPTADO: AES-256</span>
+                    {currentModel && <span>MODELO: {currentModel.toUpperCase()}</span>}
                   </div>
                   <div className="flex gap-4">
                     <span>STATUS: {reactorState.idle ? "IDLE" : reactorState.thinking ? "BUSY" : "ACTIVE"}</span>
                     <span>LINK: ESTÁVEL</span>
+                    {currentLatency !== null && <span>LATÊNCIA: {formatLatency(currentLatency)}</span>}
                   </div>
                 </div>
               </div>
@@ -414,6 +623,11 @@ export default function Home() {
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(0, 212, 255, 0.4);
+        }
+        .prose pre {
+          background: rgba(0, 212, 255, 0.05) !important;
+          border: 1px solid rgba(0, 212, 255, 0.1) !important;
+          border-radius: 0.5rem;
         }
       `}</style>
     </>

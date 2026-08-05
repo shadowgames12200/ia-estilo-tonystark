@@ -25,7 +25,10 @@ interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-const SILENCE_TIMEOUT_MS = 1500;
+// ULTRA-LOW LATENCY: 800ms silence detection (was 1500ms)
+const SILENCE_TIMEOUT_MS = 800;
+// Fast re-ack: immediately flag silence when user stops mid-sentence
+const INTERIM_SILENCE_MS = 500;
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -36,10 +39,11 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const [isSupported, setIsSupported] = useState(false);
   const shouldRestartRef = useRef(false);
-  
+
   const onVoiceDetectedRef = useRef<((text: string) => void) | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+  const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Ref para o VAD (Volume Activity Detection) vindo de fora
   const isUserSpeakingRef = useRef(false);
 
@@ -64,8 +68,6 @@ export function useSpeechRecognition() {
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         // --- FILTRO BIOMÉTRICO ---
-        // Se o analisador de volume não detectar atividade humana real, ignoramos o resultado.
-        // Isso evita que ruídos de fundo ou eco interno disparem a IA.
         if (!isUserSpeakingRef.current) return;
 
         let interim = "";
@@ -90,19 +92,33 @@ export function useSpeechRecognition() {
         }
         setInterimTranscript(interim);
 
+        // ULTRA-LOW LATENCY: Reset silence timers on any voice activity
         if (interim.trim() || final.trim()) {
           setSilenceDetected(false);
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-          
-          silenceTimerRef.current = setTimeout(() => {
+          if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
+
+          // Final results trigger immediate processing
+          if (final) {
             setSilenceDetected(true);
-          }, SILENCE_TIMEOUT_MS);
+          } else {
+            // Interim: shorter timer for faster response to pauses
+            interimTimerRef.current = setTimeout(() => {
+              setSilenceDetected(true);
+            }, INTERIM_SILENCE_MS);
+          }
         }
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         if (event.error === "no-speech") return;
-        setError(event.error);
+        if (event.error === "audio-capture") {
+          setError("Microfone não encontrado");
+        } else if (event.error === "not-allowed") {
+          setError("Permissão do microfone negada");
+        } else {
+          setError(event.error);
+        }
         setIsListening(false);
       };
 
@@ -113,13 +129,14 @@ export function useSpeechRecognition() {
             try {
               if (recognitionRef.current) recognitionRef.current.start();
             } catch (e) {}
-          }, 200);
+          }, 100); // Faster restart
         }
       };
     }
 
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
       if (recognitionRef.current) recognitionRef.current.abort();
     };
   }, []);
@@ -146,6 +163,7 @@ export function useSpeechRecognition() {
       } catch (e) {}
     }
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
   }, []);
 
   const setUserSpeakingStatus = useCallback((isSpeaking: boolean) => {
@@ -157,6 +175,7 @@ export function useSpeechRecognition() {
     setInterimTranscript("");
     setSilenceDetected(false);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
   }, []);
 
   return {

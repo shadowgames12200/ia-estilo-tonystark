@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { buildMemoryContext, extractAndSaveSemanticMemories } from "../server/_core/semantic-memory.js";
 import { API_CONFIG, getRandomKey } from "../server/_core/api-config.js";
+import { selectModelForContent, type TaskComplexity, type ModelConfig } from "../server/_core/model-router.js";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark, adaptada para falar em português brasileiro.
 
@@ -24,20 +25,21 @@ VOZ E ÁUDIO:
 - Otimize suas respostas para serem ouvidas: frases curtas, linguagem natural.
 - Nunca use markdown pesado (###, **, tabelas) pois isso soa mal no áudio.
 - Pode ocasionalmente mencionar seus sistemas ou o fato de estar "transmitindo" sua resposta.
-- Se o Senhor pedir para falar mais rápido ou mais alto, você sabe que existem controles manuais no HUD para isso.
 
 Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+// ─── API Endpoints ───
+const API_URLS = {
+  groq: "https://api.groq.com/openai/v1/chat/completions",
+  openai: "https://api.openai.com/v1/chat/completions",
+  anthropic: "https://api.anthropic.com/v1/messages",
+};
 
 const DEFAULT_CONFIG = {
   maxIterations: 3,
   maxToolCalls: 2,
-  model: "llama-3.3-70b-versatile",
-  fallbackModel: "gpt-4o-mini",
   temperature: 0.6,
-  maxTokens: 512,
+  maxTokens: 2048,
 };
 
 // ─── Tools ───
@@ -45,7 +47,7 @@ const STARK_SYSTEM_TOOL = {
   type: "function" as const,
   function: {
     name: "stark_system",
-    description: "Controla a casa inteligente (IoT) e fornece status dos sistemas J.A.R.V.I.S. (incluindo status de deploy na Vercel).",
+    description: "Controla a casa inteligente (IoT) e fornece status dos sistemas J.A.R.V.I.S.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -97,7 +99,7 @@ async function handleToolCall(toolName: string, toolArgs: any): Promise<string> 
     const { starkTools } = await import("../server/_core/stark-module.js");
     return await starkTools.execute(toolArgs);
   }
-  
+
   if (toolName === "web_search") {
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (!tavilyKey) return "Erro: TAVILY_API_KEY não configurada.";
@@ -167,74 +169,184 @@ async function processStream(
   return fullContent;
 }
 
+/**
+ * Faz request para Groq/OpenAI (formato compatível)
+ */
+async function callOpenAICompatible(
+  provider: "groq" | "openai",
+  model: string,
+  messages: Message[],
+  tools: any[],
+  signal: AbortSignal
+): Promise<Response> {
+  const keys = provider === "groq" ? API_CONFIG.GROQ_KEYS : API_CONFIG.OPENAI_KEYS;
+  const key = getRandomKey(keys);
+  if (!key) throw new Error(`No ${provider} key available`);
+
+  const url = API_URLS[provider];
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+      temperature: DEFAULT_CONFIG.temperature,
+      max_tokens: DEFAULT_CONFIG.maxTokens,
+      tools: tools.length > 0 ? tools : undefined,
+    }),
+    signal,
+  });
+}
+
+/**
+ * Faz request para Anthropic Claude
+ */
+async function callClaude(
+  model: string,
+  messages: Message[],
+  tools: any[],
+  signal: AbortSignal
+): Promise<Response> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) throw new Error("No Anthropic key available");
+
+  // Converter formato OpenAI para Anthropic
+  const systemMessage = messages.find(m => m.role === "system");
+  const claudeMessages = messages
+    .filter(m => m.role !== "system")
+    .map(m => {
+      if (m.role === "tool") {
+        return { role: "user", content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content }] };
+      }
+      return m;
+    });
+
+  return fetch(API_URLS.anthropic, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": anthropicKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model,
+      system: systemMessage?.content || SYSTEM_PROMPT,
+      messages: claudeMessages,
+      max_tokens: DEFAULT_CONFIG.maxTokens,
+      stream: true,
+      tools: tools.length > 0 ? tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      })) : undefined,
+    }),
+    signal,
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, userId = 1 } = req.body;
-  
+  const { messages, userId = 1, image, attachedFile } = req.body;
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  const abortController = new AbortController();
 
   try {
+    // Construir contexto de memória
     let memoryContext = "";
     const lastMsg = messages.findLast((m: any) => m.role === "user")?.content || "";
     try {
       memoryContext = await buildMemoryContext(userId, lastMsg);
     } catch (e) { console.error("Memory error", e); }
 
+    // Detectar complexidade e selecionar modelo inteligente
+    const hasImage = !!image;
+    const hasFile = !!attachedFile;
+    const modelConfig = selectModelForContent(lastMsg, hasImage, hasFile);
+
+    // Enviar info do modelo selecionado
+    res.write(`data: ${JSON.stringify({ type: "model_info", model: modelConfig.model, provider: modelConfig.provider, label: modelConfig.label, description: modelConfig.description })}\n\n`);
+
     const conversationHistory: Message[] = [
       { role: "system", content: memoryContext ? `${SYSTEM_PROMPT}\n\n${memoryContext}` : SYSTEM_PROMPT },
-      ...messages
+      ...messages,
     ];
 
     let toolCallCount = 0;
-    
-    console.log(`[ChatStream] Starting loop`);
+
     for (let iteration = 0; iteration < DEFAULT_CONFIG.maxIterations; iteration++) {
-      let groqKey = getRandomKey(API_CONFIG.GROQ_KEYS);
-      let openaiKey = getRandomKey(API_CONFIG.OPENAI_KEYS);
-      
-      console.log(`[ChatStream] Keys status - Groq: ${!!groqKey}, OpenAI: ${!!openaiKey}`);
+      // Determinar tools baseado na iteração
+      const tools = toolCallCount < DEFAULT_CONFIG.maxToolCalls
+        ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL]
+        : [];
 
       let response: Response;
-      let usedModel = DEFAULT_CONFIG.model;
+      let usedModel = modelConfig.model;
+      let usedProvider = modelConfig.provider;
 
-      // Tenta Groq primeiro
+      // Tentar o modelo ideal primeiro
       try {
-        if (!groqKey) throw new Error("No Groq Key");
-        console.log(`[ChatStream] Fetching Groq: ${GROQ_API_URL}`);
-        response = await fetch(GROQ_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-            body: JSON.stringify({
-            model: DEFAULT_CONFIG.model,
-            messages: conversationHistory,
-            stream: true,
-            tools: toolCallCount < DEFAULT_CONFIG.maxToolCalls ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL] : undefined
-          }),
-        });
+        if (usedProvider === "anthropic") {
+          response = await callClaude(usedModel, conversationHistory, tools, abortController.signal);
+        } else {
+          response = await callOpenAICompatible(
+            usedProvider as "groq" | "openai",
+            usedModel,
+            conversationHistory,
+            tools,
+            abortController.signal
+          );
+        }
+
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`Groq failed: ${response.status} - ${errText}`);
+          throw new Error(`${usedProvider} failed: ${response.status} - ${errText}`);
         }
-        console.log("[ChatStream] Groq response OK");
       } catch (e) {
-        console.warn("Groq failed, falling back to OpenAI", e);
-        if (!openaiKey) {
-           res.write(`data: ${JSON.stringify({ type: "error", error: "Todas as chaves de API falharam." })}\n\n`);
-           return res.end();
+        console.warn(`${usedProvider} failed, trying fallback`, e);
+
+        // Fallback chain: ideal → groq 70b → groq 9b → openai
+        const fallbacks = [
+          { provider: "groq" as const, model: "llama-3.3-70b-versatile" },
+          { provider: "groq" as const, model: "gemma2-9b-it" },
+          { provider: "openai" as const, model: "gpt-4o-mini" },
+        ];
+
+        let fallbackSuccess = false;
+        for (const fallback of fallbacks) {
+          try {
+            response = await callOpenAICompatible(
+              fallback.provider,
+              fallback.model,
+              conversationHistory,
+              [], // Sem tools no fallback
+              abortController.signal
+            );
+            if (response.ok) {
+              usedModel = fallback.model;
+              usedProvider = fallback.provider;
+              fallbackSuccess = true;
+              break;
+            }
+          } catch (fe) {
+            console.warn(`Fallback ${fallback.model} also failed`, fe);
+          }
         }
-        usedModel = DEFAULT_CONFIG.fallbackModel;
-        response = await fetch(OPENAI_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-          body: JSON.stringify({
-            model: usedModel,
-            messages: conversationHistory,
-            stream: true,
-          }),
-        });
+
+        if (!fallbackSuccess) {
+          res.write(`data: ${JSON.stringify({ type: "error", error: "Todas as chaves de API falharam." })}\n\n`);
+          return res.end();
+        }
       }
 
       if (!response.ok) {
@@ -242,18 +354,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.end();
       }
 
+      // Processar stream
       let toolCallsDetected: ToolCall[] = [];
       const content = await processStream(
         response,
-        (chunk) => res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk, model: usedModel })}\n\n`),
+        (chunk) => res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk, model: usedModel, provider: usedProvider })}\n\n`),
         (tcs) => { toolCallsDetected = tcs; }
       );
 
       if (toolCallsDetected.length > 0 && toolCallCount < DEFAULT_CONFIG.maxToolCalls) {
         res.write(`data: ${JSON.stringify({ type: "thinking", message: "Consultando sistemas..." })}\n\n`);
-        
+
         conversationHistory.push({ role: "assistant", content: "", tool_calls: toolCallsDetected });
-        
+
         for (const tc of toolCallsDetected) {
           toolCallCount++;
           const result = await handleToolCall(tc.function.name, JSON.parse(tc.function.arguments || "{}"));
@@ -261,12 +374,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "tool",
             content: result,
             name: tc.function.name,
-            tool_call_id: tc.id
+            tool_call_id: tc.id,
           });
         }
         continue;
       } else {
-        res.write(`data: ${JSON.stringify({ type: "done", content, model: usedModel })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "done", content, model: usedModel, provider: usedProvider })}\n\n`);
         try { await extractAndSaveSemanticMemories(userId, [...conversationHistory, { role: "assistant", content }]); } catch(e){}
         return res.end();
       }

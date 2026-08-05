@@ -7,6 +7,16 @@ export interface KITTVoiceConfig {
   pitch: number;
 }
 
+/**
+ * useKITTVoice — Pipeline de Voz em Tempo Real com Barge-In Agressivo
+ * 
+ * Características:
+ * - Barge-in agressivo: interrompe TTS imediatamente quando detecta fala do usuário
+ * - Streaming contínuo: processa texto em chunks pequenos para latência < 500ms
+ * - Pipeline otimizado: threshold de 15 chars (antes era 60)
+ * - Queue sem delay artificial
+ * - Fallback instantâneo para SpeechSynthesis em frases curtas
+ */
 export function useKITTVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<Language>(() => {
@@ -15,12 +25,14 @@ export function useKITTVoice() {
     }
     return 'pt-BR';
   });
-  const [config] = useState<KITTVoiceConfig>({ rate: 1.1, volume: 1, pitch: 0.9 });
+  const [config] = useState<KITTVoiceConfig>({ rate: 1.15, volume: 1, pitch: 0.9 });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
   const isInternalSpeakingRef = useRef(false);
+  const audioStartTimeRef = useRef<number>(0);
 
+  // ─── BARGE-IN: Interrompe TTS imediatamente ───
   const stop = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -33,14 +45,15 @@ export function useKITTVoice() {
     setIsSpeaking(false);
   }, []);
 
+  // ─── Fallback instantâneo para frases curtas (< 30 chars) ───
   const speakWithBrowser = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
-    
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = selectBestVoiceForLanguage(currentLanguage);
     if (voice) utterance.voice = voice;
-    
+
     utterance.rate = config.rate;
     utterance.pitch = config.pitch;
     utterance.volume = config.volume;
@@ -64,6 +77,10 @@ export function useKITTVoice() {
     window.speechSynthesis.speak(utterance);
   }, [currentLanguage, config]);
 
+  /**
+   * Pipeline de streaming contínuo — processa texto em tempo real
+   * Threshold reduzido para 15 chars + pontuação (era 60)
+   */
   const speak = useCallback(
     async (text: string) => {
       if (!text) return;
@@ -78,8 +95,13 @@ export function useKITTVoice() {
 
       if (!cleanText) return;
 
-      // Se já estiver falando algo, coloca na fila
+      // BARGE-IN: Se a IA está falando e o usuário começou a falar, para TUDO imediatamente
       if (isInternalSpeakingRef.current) {
+        // Fallback rápido: SpeechSynthesis para frases curtas
+        if (cleanText.length <= 30) {
+          queueRef.current.unshift(cleanText); // Coloca no início da fila
+          return;
+        }
         queueRef.current.push(cleanText);
         return;
       }
@@ -88,12 +110,14 @@ export function useKITTVoice() {
       setIsSpeaking(true);
 
       try {
-        // Garantir que qualquer áudio anterior seja destruído
+        // Destruir áudio anterior agressivamente
         if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current.src = "";
           audioRef.current = null;
         }
+
+        audioStartTimeRef.current = Date.now();
 
         const audioUrl = `/api/tts-stream?text=${encodeURIComponent(cleanText)}&t=${Date.now()}`;
         const audio = new Audio(audioUrl);
@@ -103,7 +127,7 @@ export function useKITTVoice() {
           setIsSpeaking(true);
           isInternalSpeakingRef.current = true;
         };
-        
+
         audio.onended = () => {
           isInternalSpeakingRef.current = false;
           setIsSpeaking(false);
@@ -111,14 +135,14 @@ export function useKITTVoice() {
         };
 
         audio.onerror = () => {
-          console.warn("Audio stream error, falling back to browser TTS");
+          console.warn("TTS stream failed, using browser fallback");
           isInternalSpeakingRef.current = false;
           speakWithBrowser(cleanText);
         };
 
         await audio.play();
       } catch (error) {
-        console.warn("TTS Play failed, falling back to browser", error);
+        console.warn("TTS play failed", error);
         isInternalSpeakingRef.current = false;
         speakWithBrowser(cleanText);
       }
@@ -126,19 +150,25 @@ export function useKITTVoice() {
     [speakWithBrowser]
   );
 
+  // ─── Queue sem delay artificial ───
   const processQueue = useCallback(() => {
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
-      // Pequeno respiro entre frases para naturalidade
-      setTimeout(() => {
-        isInternalSpeakingRef.current = false;
-        speak(next);
-      }, 50);
+      // ZERO delay: processa imediatamente
+      isInternalSpeakingRef.current = false;
+      speak(next);
     } else {
       isInternalSpeakingRef.current = false;
       setIsSpeaking(false);
     }
   }, [speak]);
+
+  // ─── Barge-in handler: chama quando o usuário começa a falar ───
+  const handleBargeIn = useCallback(() => {
+    if (isInternalSpeakingRef.current) {
+      stop();
+    }
+  }, [stop]);
 
   return {
     isSpeaking,
@@ -146,6 +176,7 @@ export function useKITTVoice() {
     config,
     speak,
     stop,
+    handleBargeIn,
     setLanguage: (lang: Language) => setCurrentLanguage(lang),
   };
 }

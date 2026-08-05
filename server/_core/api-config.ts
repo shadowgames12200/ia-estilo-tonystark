@@ -1,6 +1,7 @@
 /**
  * API Configuration Module
  * Gerencia chaves de API, fallbacks e rotação de provedores.
+ * Suporta: Groq, OpenAI, ElevenLabs, Anthropic (Claude), Google (Gemini)
  */
 
 import { ENV } from "./env.js";
@@ -14,6 +15,12 @@ export const API_CONFIG = {
   
   // Chaves ElevenLabs
   ELEVENLABS_KEYS: (process.env.ELEVENLABS_API_KEY || "").split(",").map(k => k.trim()).filter(k => k.length > 20),
+
+  // Chaves Anthropic (Claude)
+  ANTHROPIC_KEYS: (process.env.ANTHROPIC_API_KEY || "").split(",").map(k => k.trim()).filter(k => k.startsWith("sk-ant-")),
+
+  // Chaves Google (Gemini)
+  GOOGLE_KEYS: (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "").split(",").map(k => k.trim()).filter(k => k.length > 20),
 
   // Configurações de latência
   LATENCY: {
