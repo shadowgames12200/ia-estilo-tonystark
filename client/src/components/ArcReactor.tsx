@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 export interface ArcReactorState {
   idle: boolean;
@@ -22,25 +22,21 @@ function getActiveState(state: ArcReactorState): "idle" | "listening" | "thinkin
 }
 
 /**
- * ArcReactor — Esfera orgânica animada estilo J.A.R.V.I.S.
+ * ArcReactor — Anel orgânico estilo J.A.R.V.I.S. do vídeo do TikTok
  * 
- * Dois modos:
- * 1. IDLE/OUVINDO/PENSANDO: Ondas concêntricas suaves em movimento contínuo (como no vídeo)
- * 2. FALANDO: A esfera "abre e fecha" — se expande e contrai como se estivesse falando
- * 
- * A animação NUNCA para.
+ * É um ANEL (torus) com ondas concêntricas, não uma esfera preenchida.
+ * Tem um buraco no meio (donut shape).
+ * Ondas se movem organicamente em loop contínuo.
+ * Quando fala: expande e contrai com a voz.
  */
 export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcReactorProps) {
   const activeState = getActiveState(state);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animIdRef = useRef<number>(0);
   const startTimeRef = useRef<number>(Date.now());
-
-  // Track speaking amplitude (simulates audio waveform for sphere expansion)
   const amplitudeRef = useRef(0);
   const targetAmplitudeRef = useRef(0);
 
-  // Smooth amplitude transitions
   useEffect(() => {
     targetAmplitudeRef.current = activeState === "speaking" ? 1 : 0;
   }, [activeState]);
@@ -55,17 +51,17 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
   const color = colorMap[activeState];
   const rgba = (a: number) => `rgba(${color.r}, ${color.g}, ${color.b}, ${a})`;
 
-  // Seed-based random for consistent waves
+  // Wave seeds
   const seeds = useRef<Array<{ freq: number; amp: number; phase: number; speed: number; offset: number }>>([]);
 
   useEffect(() => {
     const s = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       s.push({
-        freq: 3 + i * 1.5 + Math.random() * 0.5,
-        amp: 0.06 + Math.random() * 0.04,
+        freq: 4 + i * 1.8 + Math.random() * 0.3,
+        amp: 0.04 + Math.random() * 0.03,
         phase: Math.random() * Math.PI * 2,
-        speed: 0.3 + i * 0.12 + Math.random() * 0.15,
+        speed: 0.4 + i * 0.1 + Math.random() * 0.15,
         offset: Math.random() * Math.PI * 2,
       });
     }
@@ -92,59 +88,54 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
     const cy = size / 2;
     const half = size / 2;
 
-    // Time
     const t = (Date.now() - startTimeRef.current) / 1000;
 
-    // Smooth amplitude interpolation (eases in/out of speaking mode)
-    amplitudeRef.current += (targetAmplitudeRef.current - amplitudeRef.current) * 0.08;
+    // Smooth amplitude
+    amplitudeRef.current += (targetAmplitudeRef.current - amplitudeRef.current) * 0.06;
     const amp = amplitudeRef.current;
-
-    // When speaking, modulate amplitude with a simulated waveform
     let waveAmp = amp;
     if (amp > 0.01) {
-      waveAmp = amp * (0.5 + 0.5 * Math.abs(Math.sin(t * 6.5)));
+      waveAmp = amp * (0.5 + 0.5 * Math.abs(Math.sin(t * 7)));
     }
 
-    // ─── SPEAKING MODE: Sphere expands/contracts with voice ───
-    const baseRadius = half * 0.7;
-    const expansion = waveAmp * half * 0.35; // Up to 35% expansion when speaking
-    const currentRadius = baseRadius + expansion;
+    // ─── TORUS/RING GEOMETRY ───
+    // Outer radius = 85% of half, Inner radius = 30% of half
+    // This creates the donut/torus shape from the video
+    const outerR = half * 0.88;
+    const innerR = half * 0.28;
+    const midR = (outerR + innerR) / 2;
 
-    // ─── IDLE/LISTENING/THINKING MODE: Gentle breathing ───
-    const breathCycle = activeState === "idle"
-      ? 0.03 * Math.sin(t * 1.5)
-      : activeState === "listening"
-        ? 0.04 * Math.sin(t * 2.5)
-        : activeState === "thinking"
-          ? 0.035 * Math.sin(t * 2)
-          : 0;
+    // Expansion when speaking
+    const expansion = waveAmp * half * 0.15;
+    const currentOuterR = outerR + expansion;
+    const currentInnerR = innerR + expansion * 0.5;
 
-    // ─── AMBIENT GLOW ───
-    const glowPulse = 0.35 + 0.15 * Math.sin(t * 2);
-    const ambientR = half * 1.0;
-    const ag = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambientR);
-    ag.addColorStop(0, rgba(glowPulse * 0.12));
-    ag.addColorStop(0.5, rgba(glowPulse * 0.06));
+    // ─── AMBIENT GLOW (soft halo behind the ring) ───
+    const glowPulse = 0.3 + 0.12 * Math.sin(t * 1.8);
+    const ag = ctx.createRadialGradient(cx, cy, innerR * 0.8, cx, cy, currentOuterR * 1.15);
+    ag.addColorStop(0, "transparent");
+    ag.addColorStop(0.3, rgba(glowPulse * 0.04));
+    ag.addColorStop(0.7, rgba(glowPulse * 0.08));
     ag.addColorStop(1, "transparent");
     ctx.beginPath();
-    ctx.arc(cx, cy, ambientR, 0, Math.PI * 2);
+    ctx.arc(cx, cy, currentOuterR * 1.15, 0, Math.PI * 2);
     ctx.fillStyle = ag;
     ctx.fill();
 
-    // ─── WAVE LAYERS (5 concentric organic rings) ───
-    const layerCount = 5;
-    for (let L = 0; L < layerCount; L++) {
-      const layerRatio = 1 - (L * 0.14); // 0.86, 0.72, 0.58, 0.44, 0.30
-      const radius = currentRadius * layerRatio;
-      const segs = 256;
+    // ─── TORUS BODY — Multiple organic rings between outer and inner ───
+    const ringCount = 8;
+    for (let L = 0; L < ringCount; L++) {
+      const t_ratio = L / (ringCount - 1); // 0 to 1
+      const radius = currentInnerR + t_ratio * (currentOuterR - currentInnerR);
+      const segs = 300;
 
-      // Line properties
-      const lineWidth = 1.8 + L * 0.3;
-      const alpha = 0.3 + L * 0.08;
-      const glow = 6 + L * 4;
+      // Thicker in the middle, thinner at edges
+      const thickness = 1.5 + Math.sin(t_ratio * Math.PI) * 2.0;
+      const alpha = 0.15 + Math.sin(t_ratio * Math.PI) * 0.35;
+      const glow = 3 + Math.sin(t_ratio * Math.PI) * 10;
 
       ctx.save();
-      ctx.lineWidth = lineWidth;
+      ctx.lineWidth = thickness;
       ctx.strokeStyle = rgba(alpha);
       ctx.shadowColor = color.base;
       ctx.shadowBlur = glow;
@@ -154,37 +145,31 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
         const angle = (i / segs) * Math.PI * 2;
         let r = radius;
 
-        // ─── IDLE/OUVINDO/PENSANDO: Smooth organic waves ───
+        // IDLE: Smooth organic waves
         if (amp < 0.1) {
-          const waveMult = activeState === "listening" ? 1.2 : activeState === "thinking" ? 0.8 : 0.5;
           for (const seed of seeds.current) {
-            const wave1 = Math.sin(angle * seed.freq + t * seed.speed * waveMult + seed.phase);
-            const wave2 = Math.cos(angle * seed.freq * 0.7 - t * seed.speed * waveMult * 0.4 + seed.offset);
-            const wave3 = Math.sin(angle * seed.freq * 1.3 + t * seed.speed * waveMult * 0.2);
-            r += (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * seed.amp * radius;
+            const wave1 = Math.sin(angle * seed.freq + t * seed.speed + seed.phase);
+            const wave2 = Math.cos(angle * seed.freq * 0.7 - t * seed.speed * 0.4 + seed.offset);
+            const wave3 = Math.sin(angle * seed.freq * 1.3 + t * seed.speed * 0.25);
+            r += (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * seed.amp * midR;
           }
+          // Gentle breathing
+          r += Math.sin(t * 1.5) * radius * 0.008;
         }
-        // ─── FALANDO: Waves + dramatic expansion/contraction ───
+        // SPEAKING: Dramatic expansion/contraction
         else {
-          // Organic waves still present but more energetic
           for (const seed of seeds.current) {
-            const wave1 = Math.sin(angle * seed.freq * 1.5 + t * seed.speed * 2.5 + seed.phase);
-            const wave2 = Math.cos(angle * seed.freq * 0.8 - t * seed.speed * 1.8 + seed.offset);
-            r += (wave1 * 0.6 + wave2 * 0.4) * seed.amp * radius * 0.5;
+            const wave1 = Math.sin(angle * seed.freq * 1.8 + t * seed.speed * 3 + seed.phase);
+            const wave2 = Math.cos(angle * seed.freq * 0.9 - t * seed.speed * 2 + seed.offset);
+            r += (wave1 * 0.55 + wave2 * 0.45) * seed.amp * midR * 0.4;
           }
-
-          // SPEAKING: Dramatic pulse per word (simulated syllable rhythm)
-          const syllablePulse = Math.sin(t * 8 + angle * 3) * currentRadius * 0.04 * waveAmp;
-          const energyPulse = Math.sin(t * 12 + angle * 5) * currentRadius * 0.02 * waveAmp;
-          r += syllablePulse + energyPulse;
+          // Syllable pulse
+          r += Math.sin(t * 9 + angle * 4) * radius * 0.035 * waveAmp;
+          r += Math.sin(t * 13 + angle * 6) * radius * 0.015 * waveAmp;
         }
-
-        // Gentle breathing overlay
-        r += breathCycle * radius;
 
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r;
-
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -194,134 +179,107 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
       ctx.restore();
     }
 
-    // ─── FILLED SPHERE (subtle tint) ───
-    const fillR = currentRadius * 0.86;
-    const fillGrad = ctx.createRadialGradient(cx, cy, fillR * 0.15, cx, cy, fillR);
-    fillGrad.addColorStop(0, rgba(0.03));
-    fillGrad.addColorStop(0.6, rgba(0.05));
-    fillGrad.addColorStop(1, rgba(0.01));
+    // ─── DARK CORE (the hole in the middle) ───
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, currentInnerR * 0.85);
+    coreGrad.addColorStop(0, "rgba(0,0,0,0.98)");
+    coreGrad.addColorStop(0.7, "rgba(0,0,0,0.92)");
+    coreGrad.addColorStop(1, rgba(0.06));
     ctx.beginPath();
-    ctx.arc(cx, cy, fillR, 0, Math.PI * 2);
-    ctx.fillStyle = fillGrad;
+    ctx.arc(cx, cy, currentInnerR * 0.85, 0, Math.PI * 2);
+    ctx.fillStyle = coreGrad;
     ctx.fill();
 
-    // ─── SPEAKING: Extra energy rings that expand outward ───
+    // ─── CORE GLOW RING (inner edge of the ring) ───
+    const cgGrad = ctx.createRadialGradient(cx, cy, currentInnerR * 0.8, cx, cy, currentInnerR + 5);
+    cgGrad.addColorStop(0, "transparent");
+    cgGrad.addColorStop(0.3, rgba(0.5));
+    cgGrad.addColorStop(0.6, rgba(0.25));
+    cgGrad.addColorStop(1, "transparent");
+    ctx.beginPath();
+    ctx.arc(cx, cy, currentInnerR + 5, 0, Math.PI * 2);
+    ctx.fillStyle = cgGrad;
+    ctx.fill();
+
+    // ─── OUTER GLOW RING (outer edge of the ring) ───
+    const ogGrad = ctx.createRadialGradient(cx, cy, currentOuterR - 5, cx, cy, currentOuterR + 10);
+    ogGrad.addColorStop(0, "transparent");
+    ogGrad.addColorStop(0.3, rgba(0.35));
+    ogGrad.addColorStop(0.7, rgba(0.15));
+    ogGrad.addColorStop(1, "transparent");
+    ctx.beginPath();
+    ctx.arc(cx, cy, currentOuterR + 10, 0, Math.PI * 2);
+    ctx.fillStyle = ogGrad;
+    ctx.fill();
+
+    // ─── RADIAL MESH LINES ───
+    const meshCount = 24;
+    ctx.save();
+    ctx.lineWidth = 0.4;
+    for (let m = 0; m < meshCount; m++) {
+      const baseAngle = (m / meshCount) * Math.PI * 2;
+      const angle = baseAngle + Math.sin(t * 0.8 + m * 0.3) * 0.02;
+      const ma = 0.06 + 0.04 * Math.sin(t * 1.5 + m * 0.4);
+      ctx.strokeStyle = rgba(ma);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * currentInnerR, cy + Math.sin(angle) * currentInnerR);
+      ctx.lineTo(cx + Math.cos(angle) * currentOuterR, cy + Math.sin(angle) * currentOuterR);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ─── RIPPLE RINGS (expanding from inner edge) ───
+    const rippleSpeed = activeState === "speaking" ? 1.8 : activeState === "listening" ? 0.8 : activeState === "thinking" ? 0.5 : 0.3;
+    const rippleCount = activeState === "speaking" ? 6 : activeState === "listening" ? 3 : 2;
+    for (let r = 0; r < rippleCount; r++) {
+      const phase = ((t * rippleSpeed + r * 0.18) % 1);
+      const rR = currentInnerR + phase * (currentOuterR - currentInnerR);
+      const rAlpha = 0.35 * (1 - phase);
+      ctx.beginPath();
+      ctx.arc(cx, cy, rR, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(rAlpha);
+      ctx.lineWidth = 0.8;
+      ctx.shadowColor = color.base;
+      ctx.shadowBlur = 4;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // ─── SPEAKING: Extra energy bursts ───
     if (amp > 0.05) {
-      const ringCount = 4;
-      for (let r = 0; r < ringCount; r++) {
-        const ringPhase = ((t * 1.5 + r * 0.25) % 1);
-        const ringR = coreRadius + ringPhase * (currentRadius - coreRadius);
-        const ringAlpha = 0.35 * (1 - ringPhase) * waveAmp;
+      for (let b = 0; b < 5; b++) {
+        const bPhase = ((t * 2 + b * 0.2) % 1);
+        const bR = currentInnerR + bPhase * (currentOuterR - currentInnerR);
+        const bAlpha = 0.2 * (1 - bPhase) * waveAmp;
 
         ctx.save();
+        ctx.strokeStyle = rgba(bAlpha);
+        ctx.lineWidth = 0.8;
+        ctx.shadowColor = color.base;
+        ctx.shadowBlur = 6;
         ctx.beginPath();
+
         for (let i = 0; i <= 200; i++) {
           const angle = (i / 200) * Math.PI * 2;
-          const wobble = Math.sin(angle * 10 + t * 6 + r * 2) * 3 * waveAmp;
-          const rr = ringR + wobble;
+          const wobble = Math.sin(angle * 12 + t * 5 + b * 3) * 4 * waveAmp;
+          const rr = bR + wobble;
           const x = cx + Math.cos(angle) * rr;
           const y = cy + Math.sin(angle) * rr;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        ctx.strokeStyle = rgba(ringAlpha);
-        ctx.lineWidth = 1;
-        ctx.shadowColor = color.base;
-        ctx.shadowBlur = 10;
         ctx.stroke();
         ctx.restore();
       }
     }
 
-    // ─── RADIAL MESH (connecting layers) ───
-    const meshCount = 18;
-    ctx.save();
-    ctx.lineWidth = 0.5;
-    for (let m = 0; m < meshCount; m++) {
-      const baseAngle = (m / meshCount) * Math.PI * 2;
-      const angle = baseAngle + Math.sin(t * 1 + m * 0.4) * 0.03;
-      const ma = 0.12 + 0.06 * Math.sin(t * 1.8 + m * 0.3);
-      ctx.strokeStyle = rgba(ma);
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angle) * fillR, cy + Math.sin(angle) * fillR);
-      ctx.lineTo(cx + Math.cos(angle) * (currentRadius * 0.3), cy + Math.sin(angle) * (currentRadius * 0.3));
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // ─── CROSS-HATCH between layers ───
-    const crossCount = 12;
-    ctx.save();
-    ctx.lineWidth = 0.4;
-    for (let c = 0; c < crossCount; c++) {
-      const hAngle = (c / crossCount) * Math.PI * 2 + t * 0.05;
-      for (let step = 0; step < layerCount - 1; step++) {
-        const r1 = currentRadius * (1 - step * 0.14);
-        const r2 = currentRadius * (1 - (step + 1) * 0.14);
-        const ca = 0.1 + 0.03 * Math.sin(t + c);
-        ctx.strokeStyle = rgba(ca);
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
-        ctx.lineTo(cx + Math.cos(hAngle + 0.1) * r2, cy + Math.sin(hAngle + 0.1) * r2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
-        ctx.lineTo(cx + Math.cos(hAngle - 0.1) * r2, cy + Math.sin(hAngle - 0.1) * r2);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-
-    // ─── Core radius (needed for speaking rings and core drawing) ───
-    const coreRadius = currentRadius * 0.2;
-
-
-    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
-    coreGrad.addColorStop(0, "rgba(0,0,0,0.98)");
-    coreGrad.addColorStop(0.6, "rgba(0,0,0,0.9)");
-    coreGrad.addColorStop(1, rgba(0.12));
+    // ─── CENTER DOT ───
+    const dotPulse = 0.5 + 0.5 * Math.sin(t * 2.5);
     ctx.beginPath();
-    ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
-    ctx.fillStyle = coreGrad;
-    ctx.fill();
-
-    // ─── CORE GLOW RING ───
-    const cgGrad = ctx.createRadialGradient(cx, cy, coreRadius - 2, cx, cy, coreRadius + 8);
-    cgGrad.addColorStop(0, "transparent");
-    cgGrad.addColorStop(0.2, rgba(0.65));
-    cgGrad.addColorStop(0.5, rgba(0.35));
-    cgGrad.addColorStop(0.8, rgba(0.08));
-    cgGrad.addColorStop(1, "transparent");
-    ctx.beginPath();
-    ctx.arc(cx, cy, coreRadius + 8, 0, Math.PI * 2);
-    ctx.fillStyle = cgGrad;
-    ctx.fill();
-
-    // ─── RIPPLE RINGS (from core) ───
-    const rippleSpeed = activeState === "speaking" ? 1.5 : activeState === "listening" ? 0.8 : activeState === "thinking" ? 0.5 : 0.35;
-    const rippleCount = activeState === "speaking" ? 5 : activeState === "listening" ? 3 : 2;
-    for (let r = 0; r < rippleCount; r++) {
-      const phase = ((t * rippleSpeed + r * 0.22) % 1);
-      const rR = coreRadius + phase * currentRadius * 0.5;
-      const rAlpha = 0.4 * (1 - phase);
-      ctx.beginPath();
-      ctx.arc(cx, cy, rR, 0, Math.PI * 2);
-      ctx.strokeStyle = rgba(rAlpha);
-      ctx.lineWidth = 1;
-      ctx.shadowColor = color.base;
-      ctx.shadowBlur = 5;
-      ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
-
-    // ─── CENTER DOT (pulsing) ───
-    const dotPulse = 0.6 + 0.4 * Math.sin(t * 3);
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = rgba(dotPulse);
     ctx.shadowColor = color.base;
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 10;
     ctx.fill();
     ctx.shadowBlur = 0;
 
@@ -329,7 +287,7 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
     animIdRef.current = requestAnimationFrame(draw);
   }, [activeState, color, size]);
 
-  // Start animation immediately and keep running forever
+  // Start animation and keep running forever
   useEffect(() => {
     animIdRef.current = requestAnimationFrame(draw);
     return () => {
@@ -348,26 +306,6 @@ export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcRe
         style={{ width: size, height: size }}
         className="pointer-events-none"
       />
-
-      {/* Hover mic icon */}
-      <div
-        className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-300"
-        style={{ width: size, height: size, top: 0 }}
-      >
-        <div
-          className="rounded-full flex items-center justify-center backdrop-blur-sm"
-          style={{
-            width: size * 0.22,
-            height: size * 0.22,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            border: `2px solid ${color.base}`,
-          }}
-        >
-          <svg className="w-5 h-5" style={{ color: color.base }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-        </div>
-      </div>
 
       {/* State label */}
       <div
