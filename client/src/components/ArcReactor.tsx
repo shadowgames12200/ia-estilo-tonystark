@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 
 export interface ArcReactorState {
   idle: boolean;
@@ -21,11 +21,29 @@ function getActiveState(state: ArcReactorState): "idle" | "listening" | "thinkin
   return "idle";
 }
 
-export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcReactorProps) {
+/**
+ * ArcReactor — Esfera orgânica animada estilo J.A.R.V.I.S.
+ * 
+ * Dois modos:
+ * 1. IDLE/OUVINDO/PENSANDO: Ondas concêntricas suaves em movimento contínuo (como no vídeo)
+ * 2. FALANDO: A esfera "abre e fecha" — se expande e contrai como se estivesse falando
+ * 
+ * A animação NUNCA para.
+ */
+export function ArcReactor({ state, onClick, size = 340, className = "" }: ArcReactorProps) {
   const activeState = getActiveState(state);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const timeRef = useRef(0);
   const animIdRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(Date.now());
+
+  // Track speaking amplitude (simulates audio waveform for sphere expansion)
+  const amplitudeRef = useRef(0);
+  const targetAmplitudeRef = useRef(0);
+
+  // Smooth amplitude transitions
+  useEffect(() => {
+    targetAmplitudeRef.current = activeState === "speaking" ? 1 : 0;
+  }, [activeState]);
 
   const colorMap = {
     idle: { base: "#00d4ff", r: 0, g: 212, b: 255 },
@@ -45,9 +63,9 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     for (let i = 0; i < 8; i++) {
       s.push({
         freq: 3 + i * 1.5 + Math.random() * 0.5,
-        amp: 0.08 + Math.random() * 0.06,
+        amp: 0.06 + Math.random() * 0.04,
         phase: Math.random() * Math.PI * 2,
-        speed: 0.3 + i * 0.15 + Math.random() * 0.2,
+        speed: 0.3 + i * 0.12 + Math.random() * 0.15,
         offset: Math.random() * Math.PI * 2,
       });
     }
@@ -75,65 +93,94 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     const half = size / 2;
 
     // Time
-    timeRef.current += 0.016;
-    const t = timeRef.current;
+    const t = (Date.now() - startTimeRef.current) / 1000;
 
-    // Speed multiplier by state
-    const speedMult = activeState === "speaking" ? 2.5 : activeState === "listening" ? 1.8 : activeState === "thinking" ? 1.2 : 0.8;
+    // Smooth amplitude interpolation (eases in/out of speaking mode)
+    amplitudeRef.current += (targetAmplitudeRef.current - amplitudeRef.current) * 0.08;
+    const amp = amplitudeRef.current;
 
-    // ─── OUTERMOST AMBIENT GLOW (always pulsing) ───
-    const ambientR = half * 1.05;
-    const ambientPulse = 0.4 + 0.15 * Math.sin(t * speedMult * 2);
+    // When speaking, modulate amplitude with a simulated waveform
+    let waveAmp = amp;
+    if (amp > 0.01) {
+      waveAmp = amp * (0.5 + 0.5 * Math.abs(Math.sin(t * 6.5)));
+    }
+
+    // ─── SPEAKING MODE: Sphere expands/contracts with voice ───
+    const baseRadius = half * 0.7;
+    const expansion = waveAmp * half * 0.35; // Up to 35% expansion when speaking
+    const currentRadius = baseRadius + expansion;
+
+    // ─── IDLE/LISTENING/THINKING MODE: Gentle breathing ───
+    const breathCycle = activeState === "idle"
+      ? 0.03 * Math.sin(t * 1.5)
+      : activeState === "listening"
+        ? 0.04 * Math.sin(t * 2.5)
+        : activeState === "thinking"
+          ? 0.035 * Math.sin(t * 2)
+          : 0;
+
+    // ─── AMBIENT GLOW ───
+    const glowPulse = 0.35 + 0.15 * Math.sin(t * 2);
+    const ambientR = half * 1.0;
     const ag = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambientR);
-    ag.addColorStop(0, rgba(ambientPulse * 0.12));
-    ag.addColorStop(0.6, rgba(ambientPulse * 0.06));
+    ag.addColorStop(0, rgba(glowPulse * 0.12));
+    ag.addColorStop(0.5, rgba(glowPulse * 0.06));
     ag.addColorStop(1, "transparent");
     ctx.beginPath();
     ctx.arc(cx, cy, ambientR, 0, Math.PI * 2);
     ctx.fillStyle = ag;
     ctx.fill();
 
-    // ─── ORGANIC SPHERE — 5 MOVING WAVE LAYERS ───
-    // Each layer is a full ring that moves with organic waves
-    const waveRadii = [0.85, 0.72, 0.58, 0.44, 0.32]; // % of half
-    const lineWidths = [2.0, 2.2, 2.5, 2.8, 3.0];
-    const alphas = [0.25, 0.35, 0.45, 0.55, 0.65];
-    const glows = [6, 8, 10, 14, 18];
+    // ─── WAVE LAYERS (5 concentric organic rings) ───
+    const layerCount = 5;
+    for (let L = 0; L < layerCount; L++) {
+      const layerRatio = 1 - (L * 0.14); // 0.86, 0.72, 0.58, 0.44, 0.30
+      const radius = currentRadius * layerRatio;
+      const segs = 256;
 
-    for (let L = 0; L < waveRadii.length; L++) {
-      const radius = half * waveRadii[L];
-      const segs = 200;
+      // Line properties
+      const lineWidth = 1.8 + L * 0.3;
+      const alpha = 0.3 + L * 0.08;
+      const glow = 6 + L * 4;
 
       ctx.save();
-      ctx.lineWidth = lineWidths[L];
-      ctx.strokeStyle = rgba(alphas[L]);
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = rgba(alpha);
       ctx.shadowColor = color.base;
-      ctx.shadowBlur = glows[L];
+      ctx.shadowBlur = glow;
       ctx.beginPath();
 
       for (let i = 0; i <= segs; i++) {
         const angle = (i / segs) * Math.PI * 2;
         let r = radius;
 
-        // Sum multiple wave functions for organic feel
-        for (const seed of seeds.current) {
-          const wave1 = Math.sin(angle * seed.freq + t * seed.speed * speedMult + seed.phase);
-          const wave2 = Math.cos(angle * seed.freq * 0.7 - t * seed.speed * speedMult * 0.5 + seed.offset);
-          const wave3 = Math.sin(angle * seed.freq * 1.3 + t * seed.speed * speedMult * 0.3);
-          r += (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * seed.amp * radius;
+        // ─── IDLE/OUVINDO/PENSANDO: Smooth organic waves ───
+        if (amp < 0.1) {
+          const waveMult = activeState === "listening" ? 1.2 : activeState === "thinking" ? 0.8 : 0.5;
+          for (const seed of seeds.current) {
+            const wave1 = Math.sin(angle * seed.freq + t * seed.speed * waveMult + seed.phase);
+            const wave2 = Math.cos(angle * seed.freq * 0.7 - t * seed.speed * waveMult * 0.4 + seed.offset);
+            const wave3 = Math.sin(angle * seed.freq * 1.3 + t * seed.speed * waveMult * 0.2);
+            r += (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * seed.amp * radius;
+          }
+        }
+        // ─── FALANDO: Waves + dramatic expansion/contraction ───
+        else {
+          // Organic waves still present but more energetic
+          for (const seed of seeds.current) {
+            const wave1 = Math.sin(angle * seed.freq * 1.5 + t * seed.speed * 2.5 + seed.phase);
+            const wave2 = Math.cos(angle * seed.freq * 0.8 - t * seed.speed * 1.8 + seed.offset);
+            r += (wave1 * 0.6 + wave2 * 0.4) * seed.amp * radius * 0.5;
+          }
+
+          // SPEAKING: Dramatic pulse per word (simulated syllable rhythm)
+          const syllablePulse = Math.sin(t * 8 + angle * 3) * currentRadius * 0.04 * waveAmp;
+          const energyPulse = Math.sin(t * 12 + angle * 5) * currentRadius * 0.02 * waveAmp;
+          r += syllablePulse + energyPulse;
         }
 
-        // State-based pulse
-        const statePulse =
-          activeState === "speaking"
-            ? Math.sin(t * 10 + angle * 5) * radius * 0.05
-            : activeState === "listening"
-              ? Math.sin(t * 5 + angle * 3) * radius * 0.035
-              : activeState === "thinking"
-                ? Math.sin(t * 3 + angle * 2) * radius * 0.025
-                : Math.sin(t * 2 + angle) * radius * 0.015;
-
-        r += statePulse;
+        // Gentle breathing overlay
+        r += breathCycle * radius;
 
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r;
@@ -147,148 +194,142 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       ctx.restore();
     }
 
-    // ─── FILLED SPHERE INTERIOR (subtle tint) ───
-    const fillGrad = ctx.createRadialGradient(cx, cy, half * 0.1, cx, cy, half * 0.85);
-    fillGrad.addColorStop(0, rgba(0.02));
-    fillGrad.addColorStop(0.5, rgba(0.04));
+    // ─── FILLED SPHERE (subtle tint) ───
+    const fillR = currentRadius * 0.86;
+    const fillGrad = ctx.createRadialGradient(cx, cy, fillR * 0.15, cx, cy, fillR);
+    fillGrad.addColorStop(0, rgba(0.03));
+    fillGrad.addColorStop(0.6, rgba(0.05));
     fillGrad.addColorStop(1, rgba(0.01));
     ctx.beginPath();
-    ctx.arc(cx, cy, half * 0.85, 0, Math.PI * 2);
+    ctx.arc(cx, cy, fillR, 0, Math.PI * 2);
     ctx.fillStyle = fillGrad;
     ctx.fill();
 
-    // ─── RADIAL MESH LINES (connecting layers) ───
-    const meshCount = 20;
-    ctx.save();
-    ctx.lineWidth = 0.6;
-
-    for (let m = 0; m < meshCount; m++) {
-      const baseAngle = (m / meshCount) * Math.PI * 2;
-      const angle = baseAngle + Math.sin(t * 1.2 + m * 0.4) * 0.04;
-      const alpha = 0.15 + 0.08 * Math.sin(t * 2 + m * 0.3);
-      ctx.strokeStyle = rgba(alpha);
-
-      ctx.beginPath();
-      const outerR = half * 0.85;
-      const innerR = half * 0.32;
-      ctx.moveTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
-      ctx.lineTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // ─── CROSS-HATCH between layers ───
-    const crossCount = 14;
-    ctx.save();
-    ctx.lineWidth = 0.5;
-
-    for (let c = 0; c < crossCount; c++) {
-      const hAngle = (c / crossCount) * Math.PI * 2 + t * 0.06;
-      for (let step = 0; step < waveRadii.length - 1; step++) {
-        const r1 = half * waveRadii[step];
-        const r2 = half * waveRadii[step + 1];
-        const ca = 0.12 + 0.04 * Math.sin(t + c);
-        ctx.strokeStyle = rgba(ca);
-
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
-        ctx.lineTo(cx + Math.cos(hAngle + 0.12) * r2, cy + Math.sin(hAngle + 0.12) * r2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
-        ctx.lineTo(cx + Math.cos(hAngle - 0.12) * r2, cy + Math.sin(hAngle - 0.12) * r2);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-
-    // ─── DARK CORE (black hole effect) ───
-    const coreR = half * 0.16;
-    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-    coreGrad.addColorStop(0, "rgba(0,0,0,0.98)");
-    coreGrad.addColorStop(0.7, "rgba(0,0,0,0.88)");
-    coreGrad.addColorStop(1, rgba(0.12));
-    ctx.beginPath();
-    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
-    ctx.fillStyle = coreGrad;
-    ctx.fill();
-
-    // ─── CORE GLOW RING (bright edge) ───
-    const cgGrad = ctx.createRadialGradient(cx, cy, coreR - 2, cx, cy, coreR + 8);
-    cgGrad.addColorStop(0, "transparent");
-    cgGrad.addColorStop(0.2, rgba(0.6));
-    cgGrad.addColorStop(0.5, rgba(0.35));
-    cgGrad.addColorStop(0.8, rgba(0.08));
-    cgGrad.addColorStop(1, "transparent");
-    ctx.beginPath();
-    ctx.arc(cx, cy, coreR + 8, 0, Math.PI * 2);
-    ctx.fillStyle = cgGrad;
-    ctx.fill();
-
-    // ─── RIPPLE RINGS (expanding from core) ───
-    const rippleSpeed = activeState === "speaking" ? 1.2 : activeState === "listening" ? 0.8 : activeState === "thinking" ? 0.5 : 0.35;
-    const rippleCount = activeState === "speaking" ? 5 : activeState === "listening" ? 4 : 3;
-
-    for (let r = 0; r < rippleCount; r++) {
-      const phase = ((t * rippleSpeed + r * 0.22) % 1);
-      const rR = coreR + phase * half * 0.5;
-      const rAlpha = 0.45 * (1 - phase);
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, rR, 0, Math.PI * 2);
-      ctx.strokeStyle = rgba(rAlpha);
-      ctx.lineWidth = 1.2;
-      ctx.shadowColor = color.base;
-      ctx.shadowBlur = 6;
-      ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
-
-    // ─── CENTER DOT (bright, pulsing) ───
-    const dotPulse = 0.7 + 0.3 * Math.sin(t * speedMult * 4);
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(dotPulse);
-    ctx.shadowColor = color.base;
-    ctx.shadowBlur = 12;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // ─── SPEAKING: Extra energy bursts ───
-    if (activeState === "speaking") {
-      for (let b = 0; b < 6; b++) {
-        const bPhase = ((t * 1.8 + b * 0.17) % 1);
-        const bR = coreR + bPhase * half * 0.75;
-        const bAlpha = 0.25 * (1 - bPhase);
+    // ─── SPEAKING: Extra energy rings that expand outward ───
+    if (amp > 0.05) {
+      const ringCount = 4;
+      for (let r = 0; r < ringCount; r++) {
+        const ringPhase = ((t * 1.5 + r * 0.25) % 1);
+        const ringR = coreRadius + ringPhase * (currentRadius - coreRadius);
+        const ringAlpha = 0.35 * (1 - ringPhase) * waveAmp;
 
         ctx.save();
-        ctx.strokeStyle = rgba(bAlpha);
-        ctx.lineWidth = 0.8;
-        ctx.shadowColor = color.base;
-        ctx.shadowBlur = 8;
         ctx.beginPath();
-
-        for (let i = 0; i <= 100; i++) {
-          const angle = (i / 100) * Math.PI * 2;
-          const wobble = Math.sin(angle * 14 + t * 5 + b * 2) * 5;
-          const rr = bR + wobble;
+        for (let i = 0; i <= 200; i++) {
+          const angle = (i / 200) * Math.PI * 2;
+          const wobble = Math.sin(angle * 10 + t * 6 + r * 2) * 3 * waveAmp;
+          const rr = ringR + wobble;
           const x = cx + Math.cos(angle) * rr;
           const y = cy + Math.sin(angle) * rr;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
         ctx.closePath();
+        ctx.strokeStyle = rgba(ringAlpha);
+        ctx.lineWidth = 1;
+        ctx.shadowColor = color.base;
+        ctx.shadowBlur = 10;
         ctx.stroke();
         ctx.restore();
       }
     }
 
+    // ─── RADIAL MESH (connecting layers) ───
+    const meshCount = 18;
+    ctx.save();
+    ctx.lineWidth = 0.5;
+    for (let m = 0; m < meshCount; m++) {
+      const baseAngle = (m / meshCount) * Math.PI * 2;
+      const angle = baseAngle + Math.sin(t * 1 + m * 0.4) * 0.03;
+      const ma = 0.12 + 0.06 * Math.sin(t * 1.8 + m * 0.3);
+      ctx.strokeStyle = rgba(ma);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * fillR, cy + Math.sin(angle) * fillR);
+      ctx.lineTo(cx + Math.cos(angle) * (currentRadius * 0.3), cy + Math.sin(angle) * (currentRadius * 0.3));
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ─── CROSS-HATCH between layers ───
+    const crossCount = 12;
+    ctx.save();
+    ctx.lineWidth = 0.4;
+    for (let c = 0; c < crossCount; c++) {
+      const hAngle = (c / crossCount) * Math.PI * 2 + t * 0.05;
+      for (let step = 0; step < layerCount - 1; step++) {
+        const r1 = currentRadius * (1 - step * 0.14);
+        const r2 = currentRadius * (1 - (step + 1) * 0.14);
+        const ca = 0.1 + 0.03 * Math.sin(t + c);
+        ctx.strokeStyle = rgba(ca);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
+        ctx.lineTo(cx + Math.cos(hAngle + 0.1) * r2, cy + Math.sin(hAngle + 0.1) * r2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(hAngle) * r1, cy + Math.sin(hAngle) * r1);
+        ctx.lineTo(cx + Math.cos(hAngle - 0.1) * r2, cy + Math.sin(hAngle - 0.1) * r2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // ─── Core radius (needed for speaking rings and core drawing) ───
+    const coreRadius = currentRadius * 0.2;
+
+
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
+    coreGrad.addColorStop(0, "rgba(0,0,0,0.98)");
+    coreGrad.addColorStop(0.6, "rgba(0,0,0,0.9)");
+    coreGrad.addColorStop(1, rgba(0.12));
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+    ctx.fillStyle = coreGrad;
+    ctx.fill();
+
+    // ─── CORE GLOW RING ───
+    const cgGrad = ctx.createRadialGradient(cx, cy, coreRadius - 2, cx, cy, coreRadius + 8);
+    cgGrad.addColorStop(0, "transparent");
+    cgGrad.addColorStop(0.2, rgba(0.65));
+    cgGrad.addColorStop(0.5, rgba(0.35));
+    cgGrad.addColorStop(0.8, rgba(0.08));
+    cgGrad.addColorStop(1, "transparent");
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreRadius + 8, 0, Math.PI * 2);
+    ctx.fillStyle = cgGrad;
+    ctx.fill();
+
+    // ─── RIPPLE RINGS (from core) ───
+    const rippleSpeed = activeState === "speaking" ? 1.5 : activeState === "listening" ? 0.8 : activeState === "thinking" ? 0.5 : 0.35;
+    const rippleCount = activeState === "speaking" ? 5 : activeState === "listening" ? 3 : 2;
+    for (let r = 0; r < rippleCount; r++) {
+      const phase = ((t * rippleSpeed + r * 0.22) % 1);
+      const rR = coreRadius + phase * currentRadius * 0.5;
+      const rAlpha = 0.4 * (1 - phase);
+      ctx.beginPath();
+      ctx.arc(cx, cy, rR, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(rAlpha);
+      ctx.lineWidth = 1;
+      ctx.shadowColor = color.base;
+      ctx.shadowBlur = 5;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // ─── CENTER DOT (pulsing) ───
+    const dotPulse = 0.6 + 0.4 * Math.sin(t * 3);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(dotPulse);
+    ctx.shadowColor = color.base;
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
     // Continue animation
     animIdRef.current = requestAnimationFrame(draw);
   }, [activeState, color, size]);
 
-  // Start animation immediately and keep it running forever
+  // Start animation immediately and keep running forever
   useEffect(() => {
     animIdRef.current = requestAnimationFrame(draw);
     return () => {
