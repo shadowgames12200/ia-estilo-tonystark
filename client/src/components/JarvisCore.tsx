@@ -30,53 +30,50 @@ export function JarvisCore({
     const centerY = height / 2;
 
     const animate = () => {
-      timeRef.current += 0.015;
+      timeRef.current += 0.012;
       const t = timeRef.current;
 
-      // Fundo preto absoluto para contraste máximo
+      // Fundo preto absoluto
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, width, height);
 
       const colorBase = isListening ? "239, 68, 68" : isThinking ? "251, 146, 60" : "0, 212, 255";
       
-      // --- CONFIGURAÇÃO DE 3000 LINHAS (MALHA TOPOGRÁFICA) ---
-      // Para atingir 3000 linhas visuais com alta fidelidade à foto:
-      const numRings = 100; // Anéis concêntricos (Latitude)
-      const numRadials = 30; // Linhas radiais (Longitude)
-      const segmentsPerRing = 120; // Detalhe de cada anel
-      
-      const innerRadius = 55; // Buraco central exato
-      const outerRadius = 195;
+      // --- CONFIGURAÇÃO DE ALTA DENSIDADE (CLONE DA FOTO) ---
+      const numRings = 150; // Aumentado para densidade extrema
+      const segmentsPerRing = 100;
+      const innerRadius = 55; // Buraco central exato da foto
+      const outerRadius = 190;
       
       let reactionScale = 1.0;
-      let waveIntensity = 1.0;
+      let intensity = 1.0;
       if (isListening) {
         reactionScale = 1.1 + Math.sin(t * 15) * 0.05;
-        waveIntensity = 2.5;
+        intensity = 2.5;
       } else if (isThinking) {
-        waveIntensity = 1.8;
+        intensity = 1.8;
       } else if (isSpeaking) {
-        waveIntensity = 2.0;
+        intensity = 2.0;
       }
 
-      // Função de deformação topográfica (Noise exato da foto)
+      // Função de interferência para criar a malha ondulada da foto
       const getWarp = (angle: number, r: number, time: number) => {
-        const f1 = 6; // Frequência das ondas principais
-        const f2 = 12; // Micro-interferência
-        const warp = Math.sin(angle * f1 + time * 2) * 8 + 
-                     Math.cos(angle * f2 - time * 1.5) * 5 +
-                     Math.sin(r * 0.08 - time * 3) * 10;
-        return warp * waveIntensity;
+        // Combinação de múltiplas ondas para o efeito "topográfico"
+        const warp = Math.sin(angle * 6 + time * 2) * 6 + 
+                     Math.cos(angle * 12 - time * 1.5) * 4 +
+                     Math.sin(r * 0.07 - time * 2.5) * 8 +
+                     Math.sin(angle * 3 + r * 0.02) * 5;
+        return warp * intensity;
       };
 
-      // 1. DESENHAR OS ANÉIS (HORIZONTAL MESH)
-      ctx.lineWidth = 0.5;
+      // 1. DESENHAR OS ANÉIS CONCÊNTRICOS (MALHA DENSÍSSIMA)
+      ctx.lineWidth = 0.4;
       for (let i = 0; i < numRings; i++) {
         const rBase = innerRadius + (i / numRings) * (outerRadius - innerRadius);
         const progress = i / numRings;
         
-        // Gradiente de opacidade: mais denso e brilhante nas bordas das ondas
-        const opacity = (0.1 + Math.sin(progress * Math.PI) * 0.4) * (0.8 + Math.random() * 0.2);
+        // Opacidade variável para dar profundidade e brilho nas cristas
+        const opacity = (0.1 + Math.sin(progress * Math.PI) * 0.5) * (0.7 + Math.random() * 0.3);
         ctx.strokeStyle = `rgba(${colorBase}, ${opacity})`;
         
         ctx.beginPath();
@@ -86,7 +83,7 @@ export function JarvisCore({
           const r = rBase + warp;
           
           const x = centerX + Math.cos(angle) * r;
-          const y = centerY + Math.sin(angle) * r * 0.98; // Leve perspectiva
+          const y = centerY + Math.sin(angle) * r * 0.98;
           
           if (j === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -94,12 +91,12 @@ export function JarvisCore({
         ctx.stroke();
       }
 
-      // 2. DESENHAR AS LINHAS RADIAIS (VERTICAL MESH)
-      ctx.lineWidth = 0.3;
+      // 2. DESENHAR LINHAS RADIAIS DE CONEXÃO
+      ctx.lineWidth = 0.2;
+      const numRadials = 40;
       for (let i = 0; i < numRadials; i++) {
         const angle = (i / numRadials) * Math.PI * 2;
-        const opacity = 0.15;
-        ctx.strokeStyle = `rgba(${colorBase}, ${opacity})`;
+        ctx.strokeStyle = `rgba(${colorBase}, 0.12)`;
         
         ctx.beginPath();
         for (let j = 0; j < numRings; j++) {
@@ -116,14 +113,14 @@ export function JarvisCore({
         ctx.stroke();
       }
 
-      // --- BURACO CENTRAL (O "VOID") ---
+      // --- BURACO CENTRAL (VOID) ---
       ctx.fillStyle = "#000000";
       ctx.beginPath();
-      ctx.arc(centerX, centerY, innerRadius - 3, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, innerRadius - 4, 0, Math.PI * 2);
       ctx.fill();
       
-      // Borda brilhante do buraco central
-      ctx.shadowBlur = 10;
+      // Borda brilhante interna
+      ctx.shadowBlur = 12;
       ctx.shadowColor = `rgba(${colorBase}, 0.8)`;
       ctx.strokeStyle = `rgba(${colorBase}, 0.9)`;
       ctx.lineWidth = 2;
@@ -132,7 +129,7 @@ export function JarvisCore({
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // --- TEXTOS HUD (IDÊNTICO À FOTO) ---
+      // --- LABELS HUD (NÚCLEO DO SISTEMA) ---
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       
@@ -174,7 +171,7 @@ export function JarvisCore({
         ref={canvasRef}
         width={600}
         height={600}
-        className="max-w-full h-auto drop-shadow-[0_0_30px_rgba(0,212,255,0.1)]"
+        className="max-w-full h-auto"
       />
     </div>
   );
