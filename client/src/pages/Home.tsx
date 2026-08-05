@@ -62,13 +62,15 @@ export default function Home() {
     stopStream,
   } = useStreamingChatWithVoice(
     (text) => {
+      // CORREÇÃO: Apenas chama o speak se a voz estiver habilitada
+      // O hook useStreamingChatWithVoice já pode estar disparando o browser TTS internamente
       if (voiceEnabled) {
         aiSpeakingRef.current = true;
         setAISpeakingStatus(true);
         kittVoice.speak(text);
       }
     },
-    kittVoice.config,
+    { ...kittVoice.config, useBrowserTTS: false }, // Forçar desativação do browser TTS no hook de streaming
     () => { handleInterruption(); }
   );
 
@@ -322,18 +324,18 @@ export default function Home() {
           </header>
 
           {/* Main content */}
-          <div className="flex-1 overflow-hidden">
-            <div className="grid grid-cols-12 gap-4 h-full p-4">
-              {/* Left sidebar */}
-              <div className="col-span-2 space-y-4 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto sm:overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 h-full p-4">
+              {/* Left sidebar - Hidden on mobile, shown on desktop */}
+              <div className="hidden sm:block sm:col-span-2 space-y-4 overflow-y-auto">
                 <SystemStatusPanel />
                 <ProcessesPanel />
                 <CommunicationPanel />
               </div>
 
               {/* Center - Core and Voice Command */}
-              <div className="col-span-8 flex flex-col items-center justify-center space-y-4">
-                <div className="flex-1 flex items-center justify-center relative mt-8">
+              <div className="col-span-1 sm:col-span-8 flex flex-col items-center justify-center space-y-4">
+                <div className="flex-1 flex items-center justify-center relative mt-4 sm:mt-8">
                   <JarvisCore
                     isListening={isListening}
                     isThinking={isThinking}
@@ -342,7 +344,7 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="w-full">
+                <div className="w-full max-w-2xl">
                   <VoiceCommandPanel
                     transcript={transcript}
                     interimTranscript={interimTranscript}
@@ -356,8 +358,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Right sidebar */}
-              <div className="col-span-2 space-y-4 overflow-y-auto">
+              {/* Right sidebar - Hidden on mobile, shown on desktop */}
+              <div className="hidden sm:block sm:col-span-2 space-y-4 overflow-y-auto">
                 <DiagnosticsPanel />
                 <MonitoringPanel />
                 <SecurityPanel />

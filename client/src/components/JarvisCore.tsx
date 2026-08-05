@@ -30,72 +30,44 @@ export function JarvisCore({
     const centerY = height / 2;
 
     const animate = () => {
-      timeRef.current += 0.01;
+      timeRef.current += 0.02; // Um pouco mais rápido para parecer vivo
       const t = timeRef.current;
 
-      // Fundo preto absoluto
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, width, height);
 
       const colorBase = isListening ? "239, 68, 68" : isThinking ? "251, 146, 60" : "0, 212, 255";
       
-      // Fatores de animação
-      let waveScale = isListening ? 2.5 : isThinking ? 1.8 : 1.2;
-      let rotationSpeed = t * 0.2;
+      // --- RENDERIZAR MALHA ULTRA-DENSA (CLONE FINAL) ---
+      const rings = 120; // Densidade máxima para fechar a malha como na foto
+      const pointsPerRing = 100;
+      const innerRadius = 40;
+      const outerRadius = 185;
 
-      // --- RENDERIZAR MALHA DE INTERFERÊNCIA (CLONE DA FOTO) ---
-      const rings = 80; // Aumentado para densidade máxima
-      const pointsPerRing = 120;
-      const innerRadius = 45;
-      const outerRadius = 190;
-
-      ctx.lineWidth = 0.6;
+      ctx.lineWidth = 0.4; // Linhas mais finas para suportar a densidade
       
-      // Desenhar anéis com interferência
       for (let i = 0; i < rings; i++) {
         const rBase = innerRadius + (i / rings) * (outerRadius - innerRadius);
         const progress = i / rings;
         
-        // Opacidade baseada na posição (mais brilhante no meio da malha)
-        const opacity = Math.sin(progress * Math.PI) * 0.5 + 0.1;
+        // Brilho intenso nas bordas das ondas
+        const opacity = (Math.sin(progress * Math.PI) * 0.4 + 0.1) * (isListening ? 1.5 : 1);
         ctx.strokeStyle = `rgba(${colorBase}, ${opacity})`;
         
         ctx.beginPath();
         for (let j = 0; j <= pointsPerRing; j++) {
           const angle = (j / pointsPerRing) * Math.PI * 2;
           
-          // Múltiplas frequências de onda para criar o efeito "quebrado" da foto
-          const noise = Math.sin(angle * 7 + t * 3) * 4 +
-                        Math.cos(angle * 13 - t * 2) * 3 +
-                        Math.sin(progress * 10 + t * 4) * 5 +
-                        Math.cos(angle * 5 + progress * 5) * 6;
+          // Frequências complexas para criar o efeito de "teia" da foto
+          const noise = Math.sin(angle * 12 + t * 2) * 3 +
+                        Math.cos(angle * 8 - t * 3) * 4 +
+                        Math.sin(progress * 15 + t * 4) * 5 +
+                        Math.cos(angle * 20) * 2; // Alta frequência para micro-detalhes
           
-          const r = rBase + noise * waveScale;
+          const r = rBase + noise * (isListening ? 2.5 : 1.2);
           
-          // Rotação 3D simulada
-          const x = centerX + Math.cos(angle + rotationSpeed) * r;
-          const y = centerY + Math.sin(angle + rotationSpeed) * r * 0.9; // Leve achatamento para perspectiva
-          
-          if (j === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-
-      // Desenhar linhas radiais de conexão (os "fios" que cruzam)
-      const radials = 40;
-      ctx.strokeStyle = `rgba(${colorBase}, 0.1)`;
-      for (let i = 0; i < radials; i++) {
-        const angleBase = (i / radials) * Math.PI * 2;
-        ctx.beginPath();
-        for (let j = 0; j < rings; j += 2) {
-          const rBase = innerRadius + (j / rings) * (outerRadius - innerRadius);
-          const progress = j / rings;
-          const noise = Math.sin(angleBase * 7 + t * 3) * 4 + Math.cos(angleBase * 13 - t * 2) * 3;
-          const r = rBase + noise * waveScale;
-          
-          const x = centerX + Math.cos(angleBase + rotationSpeed) * r;
-          const y = centerY + Math.sin(angleBase + rotationSpeed) * r * 0.9;
+          const x = centerX + Math.cos(angle) * r;
+          const y = centerY + Math.sin(angle) * r * 0.95;
           
           if (j === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -112,18 +84,17 @@ export function JarvisCore({
       ctx.restore();
 
       // Brilho na borda interna
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 10;
       ctx.shadowColor = `rgba(${colorBase}, 0.8)`;
-      ctx.strokeStyle = `rgba(${colorBase}, 0.9)`;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(${colorBase}, 1)`;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // --- LABELS HUD (NÚCLEO DO SISTEMA) ---
-      // Renderizar direto no canvas para garantir alinhamento perfeito
-      ctx.fillStyle = "rgba(0, 212, 255, 0.8)";
+      // --- LABELS HUD ---
+      ctx.fillStyle = "rgba(0, 212, 255, 0.9)";
       ctx.font = "bold 14px Orbitron, sans-serif";
       ctx.textAlign = "center";
       ctx.letterSpacing = "6px";
@@ -145,20 +116,13 @@ export function JarvisCore({
   }, [isListening, isThinking, isSpeaking]);
 
   return (
-    <div className="relative flex items-center justify-center cursor-pointer" onClick={onClick}>
+    <div className="relative flex items-center justify-center cursor-pointer scale-75 sm:scale-100" onClick={onClick}>
       <canvas
         ref={canvasRef}
         width={600}
         height={600}
         className="max-w-full h-auto"
       />
-      
-      {/* Indicador de Status Inferior */}
-      <div className="absolute bottom-0 text-center pointer-events-none" style={{ transform: 'translateY(40px)' }}>
-        <p className="text-cyan-400/60 text-[9px] font-mono tracking-[0.8em] uppercase">
-          {isListening ? ">> SYSTEM LISTENING <<" : isThinking ? ">> DATA PROCESSING <<" : isSpeaking ? ">> VOICE ACTIVE <<" : ">> SYSTEM ONLINE <<"}
-        </p>
-      </div>
     </div>
   );
 }
