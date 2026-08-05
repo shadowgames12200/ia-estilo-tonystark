@@ -116,16 +116,18 @@ export function useSpeechRecognition() {
         // Não tratar no-speech como erro fatal
         if (event.error === "no-speech") return;
         if (event.error === "audio-capture") {
-          setError("Microfone não encontrado");
+          setError("Microfone não encontrado ou permissão negada");
         } else if (event.error === "not-allowed") {
-          setError("Permissão do microfone negada");
+          setError("Permissão do microfone negada. Verifique as configurações do navegador.");
         } else if (event.error === "aborted") {
           // Abort normal, não é erro
+          return;
+        } else if (event.error === "network") {
+          console.warn("Network error - retrying");
           return;
         } else {
           // Log mas não parar o serviço
           console.warn("Speech error (non-fatal):", event.error);
-          setError(event.error);
         }
         // NÃO parar isListening aqui — deixa o restart cuidar
       };
