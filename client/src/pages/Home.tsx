@@ -327,7 +327,7 @@ export default function Home() {
 
               {/* Center - Core and Voice Command */}
               <div className="col-span-8 flex flex-col items-center justify-center space-y-4">
-                <div className="flex-1 flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center relative mt-8">
                   <JarvisCore
                     isListening={isListening}
                     isThinking={isThinking}
