@@ -30,10 +30,10 @@ export function JarvisCore({
     const centerY = height / 2;
 
     const animate = () => {
-      timeRef.current += 0.015;
+      timeRef.current += 0.01;
       const t = timeRef.current;
 
-      // Fundo preto profundo
+      // Limpar fundo
       ctx.fillStyle = "#000814";
       ctx.fillRect(0, 0, width, height);
 
@@ -41,7 +41,7 @@ export function JarvisCore({
       let reactionScale = 1.0;
       let waveIntensity = 1.0;
       if (isListening) {
-        reactionScale = 1.1 + Math.sin(t * 15) * 0.05;
+        reactionScale = 1.15 + Math.sin(t * 15) * 0.05;
         waveIntensity = 2.5;
       } else if (isThinking) {
         waveIntensity = 1.8;
@@ -51,99 +51,113 @@ export function JarvisCore({
 
       const colorBase = isListening ? "239, 68, 68" : isThinking ? "251, 146, 60" : "0, 212, 255";
 
-      // --- DESENHAR MALHA ONDULADA (IGUAL À FOTO) ---
-      ctx.lineWidth = 0.8;
+      // --- CONFIGURAÇÃO DA ESFERA 3D ONDULADA ---
+      const rows = 40; // Latitude
+      const cols = 60; // Longitude
+      const baseRadius = 120 * reactionScale;
       
-      const numRings = 50;
-      const segmentsPerRing = 80;
-      const innerRadius = 50; // O "buraco" central
-      const outerRadius = 180 * reactionScale;
-      
-      // Função de ruído simples para as ondas
-      const getNoise = (angle: number, r: number, time: number) => {
-        const freq1 = 5;
-        const freq2 = 8;
-        const noise = Math.sin(angle * freq1 + time * 2) * 10 + 
-                      Math.cos(angle * freq2 - time * 1.5) * 8 +
-                      Math.sin(r * 0.05 - time * 3) * 12;
-        return noise * waveIntensity;
-      };
+      const points: { x: number; y: number; z: number; opacity: number }[][] = [];
 
-      // Desenhar anéis concêntricos (Latitude)
-      for (let i = 0; i < numRings; i++) {
-        const rBase = innerRadius + (i / numRings) * (outerRadius - innerRadius);
-        const opacity = (i / numRings) * 0.6;
-        
-        ctx.beginPath();
-        ctx.strokeStyle = `rgba(${colorBase}, ${opacity})`;
-        
-        for (let j = 0; j <= segmentsPerRing; j++) {
-          const angle = (j / segmentsPerRing) * Math.PI * 2;
-          const noise = getNoise(angle, rBase, t);
-          const r = rBase + noise;
+      // Gerar pontos da esfera com deformação
+      for (let i = 0; i <= rows; i++) {
+        const lat = (i / rows) * Math.PI;
+        points[i] = [];
+        for (let j = 0; j <= cols; j++) {
+          const lon = (j / cols) * Math.PI * 2;
           
-          const x = centerX + Math.cos(angle) * r;
-          const y = centerY + Math.sin(angle) * r;
+          // Ruído/Onda na superfície da esfera
+          const noise = Math.sin(lat * 8 + t * 2) * 5 + 
+                        Math.cos(lon * 6 - t * 1.5) * 8 + 
+                        Math.sin(lat * 4 + lon * 4 + t) * 6;
           
-          if (j === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          const r = baseRadius + noise * waveIntensity;
+          
+          // Coordenadas 3D
+          let x3d = r * Math.sin(lat) * Math.cos(lon);
+          let y3d = r * Math.sin(lat) * Math.sin(lon);
+          let z3d = r * Math.cos(lat);
+
+          // Rotação da esfera
+          const ry = t * 0.3;
+          const rx = Math.sin(t * 0.2) * 0.3;
+          
+          // Girar no eixo Y
+          const x1 = x3d * Math.cos(ry) - z3d * Math.sin(ry);
+          const z1 = x3d * Math.sin(ry) + z3d * Math.cos(ry);
+          
+          // Girar no eixo X
+          const y2 = y3d * Math.cos(rx) - z1 * Math.sin(rx);
+          const z2 = y3d * Math.sin(rx) + z1 * Math.cos(rx);
+
+          // Projeção 2D
+          const perspective = 600 / (600 + z2);
+          points[i][j] = {
+            x: centerX + x1 * perspective,
+            y: centerY + y2 * perspective,
+            z: z2,
+            opacity: (z2 + baseRadius) / (baseRadius * 2)
+          };
         }
+      }
+
+      // Desenhar a malha (Linhas de Latitude)
+      for (let i = 0; i <= rows; i++) {
+        ctx.beginPath();
+        for (let j = 0; j <= cols; j++) {
+          const p = points[i][j];
+          // Só desenha se estiver na frente ou com opacidade baixa atrás
+          const alpha = p.opacity * 0.4;
+          ctx.strokeStyle = `rgba(${colorBase}, ${alpha})`;
+          
+          if (j === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
-      // Desenhar linhas radiais (Longitude)
-      const numRadials = 36;
-      for (let i = 0; i < numRadials; i++) {
-        const angle = (i / numRadials) * Math.PI * 2;
+      // Desenhar a malha (Linhas de Longitude)
+      for (let j = 0; j <= cols; j += 2) { // Pula algumas para não ficar denso demais
         ctx.beginPath();
-        ctx.strokeStyle = `rgba(${colorBase}, 0.15)`;
-        
-        for (let j = 0; j < numRings; j++) {
-          const rBase = innerRadius + (j / numRings) * (outerRadius - innerRadius);
-          const noise = getNoise(angle, rBase, t);
-          const r = rBase + noise;
+        for (let i = 0; i <= rows; i++) {
+          const p = points[i][j];
+          const alpha = p.opacity * 0.2;
+          ctx.strokeStyle = `rgba(${colorBase}, ${alpha})`;
           
-          const x = centerX + Math.cos(angle) * r;
-          const y = centerY + Math.sin(angle) * r;
-          
-          if (j === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
         }
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
-      // --- BURACO CENTRAL ---
-      ctx.fillStyle = "#000814";
+      // --- BURACO CENTRAL (SIMULAÇÃO DE PROFUNDIDADE) ---
+      // Na foto parece ter um centro escuro, vamos reforçar isso
+      const coreGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 50);
+      coreGrad.addColorStop(0, "#000814");
+      coreGrad.addColorStop(1, "rgba(0, 8, 20, 0)");
+      ctx.fillStyle = coreGrad;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, innerRadius - 5, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, 60, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Brilho na borda do buraco
-      ctx.strokeStyle = `rgba(${colorBase}, 0.8)`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
-      ctx.stroke();
 
-      // --- HUD EXTERNO ---
+      // --- HUD ANÉIS EXTERNOS ---
       ctx.setLineDash([]);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = `rgba(${colorBase}, 0.2)`;
+      ctx.strokeStyle = `rgba(${colorBase}, 0.15)`;
       
-      // Anel fino externo
+      // Anel Externo
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 230, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, 210, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Marcações de escala
-      for (let i = 0; i < 120; i++) {
-        if (i % 5 === 0) {
-          const angle = (i / 120) * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(centerX + Math.cos(angle) * 225, centerY + Math.sin(angle) * 225);
-          ctx.lineTo(centerX + Math.cos(angle) * 235, centerY + Math.sin(angle) * 235);
-          ctx.stroke();
-        }
+      // Marcações de HUD
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2 + t * 0.1;
+        ctx.strokeStyle = `rgba(${colorBase}, 0.4)`;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 220, angle, angle + 0.5);
+        ctx.stroke();
       }
 
       animationRef.current = requestAnimationFrame(animate);
@@ -158,34 +172,26 @@ export function JarvisCore({
 
   return (
     <div className="relative flex flex-col items-center justify-center cursor-pointer group" onClick={onClick}>
-      {/* Texto superior - Idêntico à foto */}
-      <div className="absolute top-0 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-220px)' }}>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 rounded-full border border-cyan-400 flex items-center justify-center">
-            <div className="w-1 h-1 bg-cyan-400 rounded-full" />
-          </div>
-          <h2 className="text-[16px] font-bold tracking-[0.4em] text-cyan-300 uppercase text-glow-cyan">
-            NÚCLEO DO SISTEMA
-          </h2>
-        </div>
-        <span className="text-[10px] tracking-[0.3em] text-cyan-400/50 uppercase">ENERGIA ESTÁVEL</span>
+      {/* Texto superior HUD */}
+      <div className="absolute top-0 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-200px)' }}>
+        <h2 className="text-[16px] font-bold tracking-[0.5em] text-cyan-300 uppercase text-glow-cyan">
+          NÚCLEO DO SISTEMA
+        </h2>
+        <span className="text-[10px] tracking-[0.3em] text-cyan-400/40 uppercase mt-1">ESTADO: ENERGIA ESTÁVEL</span>
       </div>
 
       <canvas
         ref={canvasRef}
         width={600}
         height={600}
-        className="drop-shadow-[0_0_50px_rgba(0,212,255,0.1)]"
+        className="drop-shadow-[0_0_50px_rgba(0,212,255,0.15)]"
       />
 
       {/* Status inferior */}
       <div className="absolute bottom-0 text-center pointer-events-none" style={{ transform: 'translateY(60px)' }}>
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-40 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
-          <p className="text-cyan-400 text-[10px] font-mono tracking-[0.8em] uppercase">
-            {isListening ? "OUVINDO..." : isThinking ? "PROCESSANDO..." : isSpeaking ? "FALANDO..." : "STANDBY"}
-          </p>
-        </div>
+        <p className="text-cyan-400 text-[10px] font-mono tracking-[0.8em] uppercase animate-pulse">
+          {isListening ? "ANALISANDO..." : isThinking ? "PROCESSANDO..." : isSpeaking ? "FALANDO..." : "STANDBY"}
+        </p>
       </div>
     </div>
   );
