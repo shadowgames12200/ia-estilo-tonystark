@@ -323,19 +323,22 @@ export default function Home() {
             </div>
           </header>
 
-          {/* Main content */}
-          <div className="flex-1 overflow-y-auto sm:overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 h-full p-4">
-              {/* Left sidebar - Hidden on mobile, shown on desktop */}
-              <div className="hidden sm:block sm:col-span-2 space-y-4 overflow-y-auto">
-                <SystemStatusPanel />
-                <ProcessesPanel />
-                <CommunicationPanel />
+          {/* Main content - Adaptive Layout */}
+          <div className="flex-1 overflow-y-auto lg:overflow-hidden">
+            <div className="flex flex-col lg:grid lg:grid-cols-12 gap-4 h-full p-4">
+              
+              {/* Left sidebar - Bottom on mobile, Left on Desktop */}
+              <div className="order-3 lg:order-1 lg:col-span-2 space-y-4 lg:overflow-y-auto pb-4 lg:pb-0">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 gap-4">
+                  <SystemStatusPanel />
+                  <ProcessesPanel />
+                  <CommunicationPanel />
+                </div>
               </div>
 
-              {/* Center - Core and Voice Command */}
-              <div className="col-span-1 sm:col-span-8 flex flex-col items-center justify-center space-y-4">
-                <div className="flex-1 flex items-center justify-center relative mt-4 sm:mt-8">
+              {/* Center - Core and Voice Command - Always Priority */}
+              <div className="order-1 lg:order-2 lg:col-span-8 flex flex-col items-center justify-center space-y-4 min-h-[400px] lg:min-h-0">
+                <div className="flex-1 flex items-center justify-center relative mt-4 lg:mt-8">
                   <JarvisCore
                     isListening={isListening}
                     isThinking={isThinking}
@@ -344,7 +347,7 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="w-full max-w-2xl">
+                <div className="w-full max-w-2xl px-2">
                   <VoiceCommandPanel
                     transcript={transcript}
                     interimTranscript={interimTranscript}
@@ -358,12 +361,15 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Right sidebar - Hidden on mobile, shown on desktop */}
-              <div className="hidden sm:block sm:col-span-2 space-y-4 overflow-y-auto">
-                <DiagnosticsPanel />
-                <MonitoringPanel />
-                <SecurityPanel />
+              {/* Right sidebar - Bottom on mobile, Right on Desktop */}
+              <div className="order-2 lg:order-3 lg:col-span-2 space-y-4 lg:overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 gap-4">
+                  <DiagnosticsPanel />
+                  <MonitoringPanel />
+                  <SecurityPanel />
+                </div>
               </div>
+
             </div>
           </div>
 
