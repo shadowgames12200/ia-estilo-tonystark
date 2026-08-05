@@ -12,6 +12,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   
   if (!text) return res.status(400).json({ error: "text is required" });
 
+  const latencyLevel = req.method === "POST" ? req.body.latencyLevel : req.query.latencyLevel;
+  const optimizationLevel = latencyLevel !== undefined ? parseInt(String(latencyLevel)) : 4;
+
   const cleanText = String(text)
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
@@ -48,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               style: 0.05, 
               use_speaker_boost: true 
             },
-            latency_optimization: 4, // Nível 4 para resposta instantânea
+            latency_optimization: optimizationLevel, // Nível dinâmico via interface
           }),
         }
       );

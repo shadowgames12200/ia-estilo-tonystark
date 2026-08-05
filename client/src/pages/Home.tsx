@@ -5,8 +5,9 @@ import { SystemStatusPanel, ProcessesPanel, CommunicationPanel } from "@/compone
 import { DiagnosticsPanel, MonitoringPanel, SecurityPanel, AssistantPanel } from "@/components/JarvisRightPanel";
 import { VoiceCommandPanel } from "@/components/VoiceCommandPanel";
 import { ChatHistoryPanel } from "@/components/ChatHistoryPanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { Streamdown } from "streamdown";
-import { Volume2, VolumeX, Clock, Cpu } from "lucide-react";
+import { Volume2, VolumeX, Clock, Cpu, Settings } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKITTVoice } from "@/hooks/useKITTVoice";
 import { useStreamingChatWithVoice } from "@/hooks/useStreamingChatWithVoice";
@@ -27,6 +28,22 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // ─── Jarvis Config State ───
+  const [jarvisConfig, setJarvisConfig] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('jarvis-stark-config');
+      if (saved) return JSON.parse(saved);
+    }
+    return {
+      latencyLevel: 4,
+      vadThreshold: 0.06,
+      bargeInEnabled: true,
+      hybridMode: true,
+      localOllamaUrl: "http://localhost:11434"
+    };
+  });
 
   // ─── Latency state ───
   const [currentLatency, setCurrentLatency] = useState<number | null>(null);
@@ -37,7 +54,7 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const kittVoice = useKITTVoice();
-  const { isUserSpeaking, startMonitoring, stopMonitoring, setBargeInHandler, setAISpeakingStatus } = useVoiceActivity(0.06);
+  const { isUserSpeaking, startMonitoring, stopMonitoring, setBargeInHandler, setAISpeakingStatus } = useVoiceActivity(jarvisConfig.vadThreshold);
 
   const {
     transcript,
@@ -70,7 +87,13 @@ export default function Home() {
         kittVoice.speak(text);
       }
     },
-    { ...kittVoice.config, useBrowserTTS: false }, // Forçar desativação do browser TTS no hook de streaming
+    { 
+      ...kittVoice.config, 
+      useBrowserTTS: false,
+      latencyLevel: jarvisConfig.latencyLevel,
+      hybridMode: jarvisConfig.hybridMode,
+      localOllamaUrl: jarvisConfig.localOllamaUrl
+    }, 
     () => { handleInterruption(); }
   );
 
@@ -87,13 +110,16 @@ export default function Home() {
   }, []);
 
   const handleInterruption = useCallback(() => {
-    if (kittVoice.isSpeaking || isStreaming || isThinking) {
-      kittVoice.stop();
-      aiSpeakingRef.current = false;
-      setAISpeakingStatus(false);
-      stopStream();
+    // Só interrompe se o Barge-in estiver habilitado ou se for uma ação manual
+    if (jarvisConfig.bargeInEnabled || !isUserSpeaking) {
+      if (kittVoice.isSpeaking || isStreaming || isThinking) {
+        kittVoice.stop();
+        aiSpeakingRef.current = false;
+        setAISpeakingStatus(false);
+        stopStream();
+      }
     }
-  }, [kittVoice, stopStream, isStreaming, isThinking, setAISpeakingStatus]);
+  }, [kittVoice, stopStream, isStreaming, isThinking, setAISpeakingStatus, jarvisConfig.bargeInEnabled, isUserSpeaking]);
 
   const sendChat = useCallback(
     async (history: Array<{ role: string; content: string }>, image?: string) => {
@@ -322,6 +348,14 @@ export default function Home() {
                 {voiceEnabled ? <Volume2 size={10} /> : <VolumeX size={10} />}
                 <span>{voiceEnabled ? "VOZ" : "OFF"}</span>
               </button>
+
+              {/* Settings toggle */}
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center justify-center w-8 h-8 rounded border border-cyan-400/20 text-cyan-400/60 hover:text-cyan-300 hover:border-cyan-400/50 transition-all bg-cyan-400/5"
+              >
+                <Settings size={14} />
+              </button>
             </div>
           </header>
 
@@ -385,6 +419,14 @@ export default function Home() {
             />
           </div>
         </div>
+
+        {/* Settings Panel */}
+        <SettingsPanel 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)}
+          config={jarvisConfig}
+          onConfigChange={setJarvisConfig}
+        />
 
         {/* Hidden ref for scroll */}
         <div ref={messagesEndRef} />

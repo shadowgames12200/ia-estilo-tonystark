@@ -95,8 +95,12 @@ export function useKITTVoice() {
         }
 
         audioStartTimeRef.current = Date.now();
+        
+        // Recuperar nível de latência do localStorage para o stream
+        const savedConfig = typeof window !== 'undefined' ? localStorage.getItem('jarvis-stark-config') : null;
+        const latencyLevel = savedConfig ? JSON.parse(savedConfig).latencyLevel : 4;
 
-        const audioUrl = `/api/tts-stream?text=${encodeURIComponent(cleanText)}&t=${Date.now()}`;
+        const audioUrl = `/api/tts-stream?text=${encodeURIComponent(cleanText)}&latencyLevel=${latencyLevel}&t=${Date.now()}`;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
 
