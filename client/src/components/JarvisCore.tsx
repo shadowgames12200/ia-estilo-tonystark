@@ -29,124 +29,138 @@ export function JarvisCore({
     const centerX = width / 2;
     const centerY = height / 2;
 
-    // Configuração das partículas 3D
-    const particleCount = 250;
-    const particles: { x: number; y: number; z: number; phi: number; theta: number; radius: number }[] = [];
+    // --- CONFIGURAÇÃO DE 3000 PARTÍCULAS EM CAMADAS ---
+    const totalParticles = 3000;
+    const particles: { 
+      phi: number; 
+      theta: number; 
+      radius: number; 
+      speed: number; 
+      layer: number;
+      size: number;
+    }[] = [];
     
-    for (let i = 0; i < particleCount; i++) {
-      const phi = Math.acos(-1 + (2 * i) / particleCount);
-      const theta = Math.sqrt(particleCount * Math.PI) * phi;
-      particles.push({
-        x: 0, y: 0, z: 0,
-        phi: phi,
-        theta: theta,
-        radius: 100 + Math.random() * 20
-      });
+    for (let i = 0; i < totalParticles; i++) {
+      // Distribuição de Fibonacci para esfera uniforme
+      const phi = Math.acos(-1 + (2 * i) / totalParticles);
+      const theta = Math.sqrt(totalParticles * Math.PI) * phi;
+      
+      // Definir camadas (0: núcleo denso, 1: meio, 2: atmosfera externa)
+      const layer = i % 3;
+      let radius, speed, size;
+      
+      if (layer === 0) { // Núcleo
+        radius = 60 + Math.random() * 20;
+        speed = 0.8 + Math.random() * 0.4;
+        size = 0.5 + Math.random() * 0.5;
+      } else if (layer === 1) { // Meio
+        radius = 90 + Math.random() * 30;
+        speed = 0.4 + Math.random() * 0.3;
+        size = 0.8 + Math.random() * 0.7;
+      } else { // Atmosfera
+        radius = 130 + Math.random() * 40;
+        speed = 0.2 + Math.random() * 0.2;
+        size = 1.0 + Math.random() * 1.0;
+      }
+
+      particles.push({ phi, theta, radius, speed, layer, size });
     }
 
     const animate = () => {
       timeRef.current += 0.01;
       const t = timeRef.current;
 
-      // Limpar canvas
-      ctx.fillStyle = "rgba(0, 8, 20, 0.3)";
+      // Fundo escuro profundo
+      ctx.fillStyle = "#000814";
       ctx.fillRect(0, 0, width, height);
 
-      // Fator de reação (pulsação)
+      // Fator de reação à voz
       let reactionScale = 1.0;
-      if (isListening) reactionScale = 1.2 + Math.sin(t * 15) * 0.2;
-      if (isThinking) reactionScale = 1.1 + Math.sin(t * 10) * 0.1;
-      if (isSpeaking) reactionScale = 1.15 + Math.sin(t * 12) * 0.15;
+      let pulseIntensity = 0;
+      if (isListening) {
+        reactionScale = 1.3 + Math.sin(t * 20) * 0.15;
+        pulseIntensity = 0.5 + Math.sin(t * 15) * 0.5;
+      } else if (isThinking) {
+        reactionScale = 1.1 + Math.sin(t * 8) * 0.05;
+      } else if (isSpeaking) {
+        reactionScale = 1.2 + Math.sin(t * 12) * 0.1;
+      }
 
       const colorBase = isListening ? "239, 68, 68" : isThinking ? "251, 146, 60" : "0, 212, 255";
 
-      // Projeção 3D e desenho das partículas
-      const sortedParticles = particles.map(p => {
-        // Rotação da esfera
-        const rotationSpeed = 0.5;
-        const currentTheta = p.theta + t * rotationSpeed;
-        const currentPhi = p.phi + Math.sin(t * 0.3) * 0.2;
+      // Processar e projetar partículas
+      const projected = particles.map(p => {
+        const currentTheta = p.theta + t * p.speed;
+        const currentPhi = p.phi + Math.sin(t * 0.2) * 0.1;
 
-        // Pulsação individual
-        const individualPulse = 1 + Math.sin(t * 2 + p.phi * 5) * 0.05;
-        const r = p.radius * reactionScale * individualPulse;
+        // Pulsação orgânica
+        const r = p.radius * reactionScale * (1 + Math.sin(t * 3 + p.phi * 10) * 0.03);
 
-        // Coordenadas esféricas para cartesianas 3D
         const x3d = r * Math.sin(currentPhi) * Math.cos(currentTheta);
         const y3d = r * Math.sin(currentPhi) * Math.sin(currentTheta);
         const z3d = r * Math.cos(currentPhi);
 
-        // Projeção 2D simples
-        const perspective = 500 / (500 + z3d);
+        const perspective = 600 / (600 + z3d);
         return {
           x: centerX + x3d * perspective,
           y: centerY + y3d * perspective,
           z: z3d,
-          size: 2 * perspective,
-          opacity: (z3d + 150) / 300 // Brilho baseado na profundidade
+          size: p.size * perspective,
+          opacity: (z3d + 200) / 400,
+          layer: p.layer
         };
-      }).sort((a, b) => a.z - b.z); // Ordenar por profundidade para renderizar correto
+      }).sort((a, b) => a.z - b.z);
 
-      // Desenhar conexões (efeito de rede neural/dados)
-      ctx.beginPath();
-      ctx.lineWidth = 0.5;
-      for (let i = 0; i < sortedParticles.length; i++) {
-        const p1 = sortedParticles[i];
-        for (let j = i + 1; j < Math.min(i + 5, sortedParticles.length); j++) {
-          const p2 = sortedParticles[j];
-          const dist = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-          if (dist < 50) {
-            ctx.strokeStyle = `rgba(${colorBase}, ${p1.opacity * 0.2})`;
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-          }
+      // Renderizar Camadas
+      projected.forEach(p => {
+        const alpha = p.opacity * (p.layer === 0 ? 0.9 : p.layer === 1 ? 0.6 : 0.3);
+        ctx.fillStyle = `rgba(${colorBase}, ${alpha})`;
+        
+        // Efeito de brilho nas partículas externas
+        if (p.layer === 2 && Math.random() > 0.98) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = `rgba(${colorBase}, 0.8)`;
         }
-      }
-      ctx.stroke();
 
-      // Desenhar as partículas
-      sortedParticles.forEach(p => {
-        ctx.fillStyle = `rgba(${colorBase}, ${p.opacity * 0.8})`;
-        ctx.shadowBlur = p.opacity * 10;
-        ctx.shadowColor = `rgba(${colorBase}, 0.5)`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
       });
-      ctx.shadowBlur = 0;
 
-      // Brilho central intenso (Core)
-      const coreSize = 20 * reactionScale;
-      const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreSize * 2);
-      grad.addColorStop(0, `rgba(${colorBase}, 0.8)`);
-      grad.addColorStop(0.5, `rgba(${colorBase}, 0.2)`);
+      // --- NÚCLEO CENTRAL BRILHANTE ---
+      const coreSize = 25 * reactionScale;
+      const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreSize * 3);
+      grad.addColorStop(0, `rgba(${colorBase}, ${0.8 + pulseIntensity * 0.2})`);
+      grad.addColorStop(0.4, `rgba(${colorBase}, 0.2)`);
       grad.addColorStop(1, "rgba(0, 0, 0, 0)");
       
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, coreSize * 2, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, coreSize * 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Desenhar anéis de dados externos (estilo HUD)
-      ctx.setLineDash([]);
+      // --- ANÉIS DE DADOS HUD (ESTILO FOTO) ---
       ctx.lineWidth = 1;
+      ctx.setLineDash([]);
       
-      // Anel 1
-      ctx.strokeStyle = `rgba(${colorBase}, 0.15)`;
+      // Anel Estático Externo
+      ctx.strokeStyle = `rgba(${colorBase}, 0.1)`;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 180 * reactionScale, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, 220, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Anel rotativo com traços
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(t * 0.2);
-      ctx.strokeStyle = `rgba(${colorBase}, 0.3)`;
-      ctx.setLineDash([5, 15]);
-      ctx.beginPath();
-      ctx.arc(0, 0, 190 * reactionScale, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+      // Anel de Escala
+      ctx.strokeStyle = `rgba(${colorBase}, 0.2)`;
+      for (let i = 0; i < 120; i++) {
+        const angle = (i / 120) * Math.PI * 2;
+        const inner = 215;
+        const outer = i % 10 === 0 ? 225 : 218;
+        ctx.beginPath();
+        ctx.moveTo(centerX + Math.cos(angle) * inner, centerY + Math.sin(angle) * inner);
+        ctx.lineTo(centerX + Math.cos(angle) * outer, centerY + Math.sin(angle) * outer);
+        ctx.stroke();
+      }
 
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -160,33 +174,35 @@ export function JarvisCore({
 
   return (
     <div className="relative flex flex-col items-center justify-center cursor-pointer group" onClick={onClick}>
-      {/* Texto superior - Estilo HUD */}
-      <div className="absolute top-0 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-160px)' }}>
+      {/* Texto superior HUD */}
+      <div className="absolute top-0 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-200px)' }}>
         <div className="flex items-center gap-4 mb-1">
-          <div className="w-8 h-[1px] bg-cyan-500/30" />
-          <h2 className="text-[12px] font-bold tracking-[0.5em] text-cyan-300 uppercase">
+          <div className="w-12 h-[1px] bg-cyan-500/20" />
+          <h2 className="text-[14px] font-black tracking-[0.6em] text-cyan-300 uppercase text-glow-cyan">
             NÚCLEO DO SISTEMA
           </h2>
-          <div className="w-8 h-[1px] bg-cyan-500/30" />
+          <div className="w-12 h-[1px] bg-cyan-500/20" />
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="text-[9px] tracking-[0.3em] text-cyan-400/60 uppercase">ENERGIA ESTÁVEL</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="text-[10px] tracking-[0.4em] text-cyan-400/50 uppercase">ENERGIA ESTÁVEL // v4.8.1</span>
         </div>
       </div>
 
       <canvas
         ref={canvasRef}
-        width={500}
-        height={500}
-        className="drop-shadow-[0_0_50px_rgba(0,212,255,0.15)]"
+        width={600}
+        height={600}
+        className="drop-shadow-[0_0_60px_rgba(0,212,255,0.1)]"
       />
 
       {/* Indicador de status inferior */}
-      <div className="absolute bottom-0 text-center pointer-events-none" style={{ transform: 'translateY(20px)' }}>
-        <p className="text-cyan-400/80 text-[10px] font-mono tracking-[0.6em] uppercase animate-pulse">
-          {isListening ? ">> OUVINDO <<" : isThinking ? ">> PROCESSANDO <<" : isSpeaking ? ">> TRANSMITINDO <<" : ">> STANDBY <<"}
-        </p>
+      <div className="absolute bottom-0 text-center pointer-events-none" style={{ transform: 'translateY(40px)' }}>
+        <div className="px-4 py-1 border border-cyan-400/20 bg-cyan-400/5 rounded-full">
+          <p className="text-cyan-400 text-[9px] font-mono tracking-[0.8em] uppercase">
+            {isListening ? "ANALISANDO VOZ..." : isThinking ? "PROCESSANDO DADOS..." : isSpeaking ? "SISTEMA ATIVO" : "AGUARDANDO COMANDO"}
+          </p>
+        </div>
       </div>
     </div>
   );
