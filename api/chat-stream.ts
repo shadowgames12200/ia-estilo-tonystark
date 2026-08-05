@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { buildMemoryContext, extractAndSaveSemanticMemories } from "../server/_core/semantic-memory.js";
 import { API_CONFIG, getRandomKey } from "../server/_core/api-config.js";
 import { selectModelForContent, type TaskComplexity, type ModelConfig } from "../server/_core/model-router.js";
+import { ENV } from "../server/_core/env.js";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark. Você não é um assistente virtual comum; você é uma entidade senciente, sofisticada e o braço direito do Senhor Stark.
 
@@ -198,6 +199,27 @@ async function callOpenAICompatible(
 }
 
 /**
+ * Faz request para Ollama Local
+ */
+async function callOllama(
+  model: string,
+  messages: Message[],
+  signal: AbortSignal
+): Promise<Response> {
+  const url = `${ENV.ollamaBaseUrl}/api/chat`;
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: model || ENV.ollamaModel,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      stream: true,
+    }),
+    signal,
+  });
+}
+
+/**
  * Faz request para Anthropic Claude
  */
 async function callClaude(
@@ -288,26 +310,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let response: Response;
       let usedModel = modelConfig.model;
       let usedProvider = modelConfig.provider;
+      let isOllama = false;
 
-      // Tentar o modelo ideal primeiro
-      try {
-        if (usedProvider === "anthropic") {
-          response = await callClaude(usedModel, conversationHistory, tools, abortController.signal);
-        } else {
-          response = await callOpenAICompatible(
-            usedProvider as "groq" | "openai",
-            usedModel,
-            conversationHistory,
-            tools,
-            abortController.signal
-          );
-        }
+      // --- MODO HÍBRIDO: Tentar Ollama Local primeiro se ativado ---
+      if (ENV.hybridModeEnabled && iteration === 0) {
+        try {
+          console.log(`[Hybrid] Tentando Ollama local em ${ENV.ollamaBaseUrl}...`);
+          // Timeout curto para não travar a experiência se o PC estiver offline
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          
+          const ollamaRes = await callOllama(ENV.ollamaModel, conversationHistory, controller.signal);
+          clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`${usedProvider} failed: ${response.status} - ${errText}`);
+          if (ollamaRes.ok) {
+            response = ollamaRes;
+            usedModel = ENV.ollamaModel;
+            usedProvider = "ollama";
+            isOllama = true;
+            console.log("[Hybrid] Conectado ao Ollama local!");
+          } else {
+            throw new Error("Ollama not responding ok");
+          }
+        } catch (err) {
+          console.warn("[Hybrid] Ollama local indisponível, usando Nuvem.", (err as Error).message);
         }
-      } catch (e) {
+      }
+
+      // Tentar o modelo ideal (Nuvem) se o Ollama falhou ou não é a primeira iteração
+      if (!response!) {
+        try {
+          if (usedProvider === "anthropic") {
+            response = await callClaude(usedModel, conversationHistory, tools, abortController.signal);
+          } else {
+            response = await callOpenAICompatible(
+              usedProvider as "groq" | "openai",
+              usedModel,
+              conversationHistory,
+              tools,
+              abortController.signal
+            );
+          }
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`${usedProvider} failed: ${response.status} - ${errText}`);
+          }
+        } catch (e) {
         console.warn(`${usedProvider} failed, trying fallback`, e);
 
         // Fallback chain: ideal → groq 70b → groq 9b → openai
@@ -351,6 +400,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Processar stream
       let toolCallsDetected: ToolCall[] = [];
+      
+      // Adaptador para o formato de stream do Ollama se necessário
+      if (usedProvider === "ollama") {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = "";
+        
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const lines = decoder.decode(value).split("\n");
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.message?.content) {
+                fullContent += parsed.message.content;
+                res.write(`data: ${JSON.stringify({ type: "chunk", content: parsed.message.content, model: usedModel, provider: usedProvider })}\n\n`);
+              }
+              if (parsed.done) break;
+            } catch (e) {}
+          }
+        }
+        
+        res.write(`data: ${JSON.stringify({ type: "done", content: fullContent, model: usedModel, provider: usedProvider })}\n\n`);
+        try { await extractAndSaveSemanticMemories(userId, [...conversationHistory, { role: "assistant", content: fullContent }]); } catch(e){}
+        return res.end();
+      }
+
       const content = await processStream(
         response,
         (chunk) => res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk, model: usedModel, provider: usedProvider })}\n\n`),

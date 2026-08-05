@@ -13,7 +13,7 @@
 export type TaskComplexity = "simple" | "medium" | "complex" | "critical" | "multimodal" | "code" | "creative";
 
 export type ModelConfig = {
-  provider: "groq" | "openai" | "anthropic" | "google";
+  provider: "groq" | "openai" | "anthropic" | "google" | "ollama";
   model: string;
   maxTokens: number;
   temperature: number;
@@ -216,6 +216,11 @@ export function getModelEndpoint(config: ModelConfig): { url: string; authHeader
       return {
         url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
         authHeader: "", // Google usa query param
+      };
+    case "ollama":
+      return {
+        url: "/api/generate", // Ollama endpoint relativo ao host
+        authHeader: "",
       };
     default:
       return getModelEndpoint({ ...MODELS.complex });

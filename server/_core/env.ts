@@ -21,4 +21,7 @@ export const ENV = {
   elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "",
   homeAssistantUrl: process.env.HOME_ASSISTANT_URL ?? "",
   homeAssistantToken: process.env.HOME_ASSISTANT_TOKEN ?? "",
+  ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+  ollamaModel: process.env.OLLAMA_MODEL ?? "llama3",
+  hybridModeEnabled: process.env.HYBRID_MODE_ENABLED === "true",
 };
