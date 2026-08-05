@@ -486,7 +486,7 @@ export default function Home() {
                 {messages.length === 0 && !isThinking && !isStreaming && (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8">
                     {/* ESFERA MAIOR: 280px (era 160px) */}
-                    <ArcReactor state={reactorState} onClick={handleMicClick} size={280} className="mb-6" />
+                    <ArcReactor state={reactorState} onClick={handleMicClick} size={340} className="mb-6" />
                     <h2 className="text-xl font-black tracking-widest text-cyan-300 mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>SISTEMAS ONLINE</h2>
                     <p className="font-mono text-sm text-cyan-400/50 max-w-md">J.A.R.V.I.S. está operacional e aguardando seus comandos, Senhor.</p>
                     <p className="font-mono text-[10px] text-cyan-400/30 mt-4">ARRASTE UMA IMAGEM PARA ANÁLISE VISUAL</p>

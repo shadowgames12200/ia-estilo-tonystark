@@ -25,7 +25,6 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
   const activeState = getActiveState(state);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timeRef = useRef(0);
-  const animRef = useRef<number>(0);
 
   const colorMap = {
     idle: {
@@ -56,7 +55,6 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
 
   const colors = colorMap[activeState];
 
-  // --- Helpers ---
   const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
@@ -72,54 +70,49 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       amp: number;
       phase: number;
       speed: number;
-      segments: number;
     }>
   >([]);
 
   useEffect(() => {
     const seeds = [];
-    // Layer 1 - outermost organic waves (large)
-    for (let i = 0; i < 3; i++) {
-      seeds.push({
-        layer: 0,
-        freq: 8 + i * 2,
-        amp: 0.04 + i * 0.02,
-        phase: Math.random() * Math.PI * 2,
-        speed: 0.3 + Math.random() * 0.2,
-        segments: 64,
-      });
-    }
-    // Layer 2 - mid organic waves
+    // Layer 0 - outermost organic waves (large, bold)
     for (let i = 0; i < 4; i++) {
       seeds.push({
-        layer: 1,
-        freq: 10 + i * 3,
-        amp: 0.05 + i * 0.015,
+        layer: 0,
+        freq: 6 + i * 2,
+        amp: 0.06 + i * 0.03,
         phase: Math.random() * Math.PI * 2,
-        speed: 0.5 + Math.random() * 0.3,
-        segments: 48,
+        speed: 0.4 + Math.random() * 0.3,
       });
     }
-    // Layer 3 - inner fine waves
-    for (let i = 0; i < 3; i++) {
+    // Layer 1 - mid organic waves (thicker)
+    for (let i = 0; i < 5; i++) {
+      seeds.push({
+        layer: 1,
+        freq: 8 + i * 3,
+        amp: 0.07 + i * 0.02,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.6 + Math.random() * 0.3,
+      });
+    }
+    // Layer 2 - inner fine waves
+    for (let i = 0; i < 4; i++) {
       seeds.push({
         layer: 2,
-        freq: 14 + i * 2,
-        amp: 0.03 + i * 0.01,
+        freq: 12 + i * 2,
+        amp: 0.05 + i * 0.015,
         phase: Math.random() * Math.PI * 2,
-        speed: 0.7 + Math.random() * 0.2,
-        segments: 36,
+        speed: 0.8 + Math.random() * 0.3,
       });
     }
-    // Layer 4 - core ripples
-    for (let i = 0; i < 2; i++) {
+    // Layer 3 - core ripples
+    for (let i = 0; i < 3; i++) {
       seeds.push({
         layer: 3,
-        freq: 20 + i * 4,
-        amp: 0.02 + i * 0.008,
+        freq: 18 + i * 4,
+        amp: 0.03 + i * 0.01,
         phase: Math.random() * Math.PI * 2,
-        speed: 1.0 + Math.random() * 0.3,
-        segments: 28,
+        speed: 1.2 + Math.random() * 0.3,
       });
     }
     waveSeeds.current = seeds;
@@ -146,12 +139,12 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     // Speed factor based on state
     const speedMult =
       activeState === "speaking"
-        ? 1.8
+        ? 2.0
         : activeState === "listening"
-          ? 1.2
+          ? 1.5
           : activeState === "thinking"
-            ? 0.6
-            : 0.3;
+            ? 0.8
+            : 0.5;
 
     timeRef.current += 0.016 * speedMult;
     const t = timeRef.current;
@@ -159,29 +152,44 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
     const rgb = hexToRgb(colors.base);
     const getRGBA = (alpha: number) => `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 
-    // ─── Outer Glow ───
-    const outerGlowR = half * 0.85;
+    // ─── MASSIVE Outer Glow ───
+    const outerGlowR = half * 0.95;
     const pulseGlow = activeState === "speaking"
-      ? 0.6 + 0.2 * Math.sin(t * 8)
+      ? 0.8 + 0.2 * Math.sin(t * 8)
       : activeState === "listening"
-        ? 0.5 + 0.15 * Math.sin(t * 4)
-        : 0.35 + 0.08 * Math.sin(t * 2);
+        ? 0.7 + 0.2 * Math.sin(t * 4)
+        : activeState === "thinking"
+          ? 0.5 + 0.15 * Math.sin(t * 3)
+          : 0.5 + 0.12 * Math.sin(t * 2);
 
+    // Outer ambient glow (very wide)
+    const ambientGlowR = half * 1.1;
+    const ambientGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambientGlowR);
+    ambientGrad.addColorStop(0, getRGBA(pulseGlow * 0.15));
+    ambientGrad.addColorStop(0.4, getRGBA(pulseGlow * 0.08));
+    ambientGrad.addColorStop(1, "transparent");
+    ctx.beginPath();
+    ctx.arc(cx, cy, ambientGlowR, 0, Math.PI * 2);
+    ctx.fillStyle = ambientGrad;
+    ctx.fill();
+
+    // Inner glow
     const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerGlowR);
-    glowGrad.addColorStop(0, getRGBA(pulseGlow * 0.4));
-    glowGrad.addColorStop(0.5, getRGBA(pulseGlow * 0.15));
+    glowGrad.addColorStop(0, getRGBA(pulseGlow * 0.5));
+    glowGrad.addColorStop(0.5, getRGBA(pulseGlow * 0.2));
     glowGrad.addColorStop(1, "transparent");
     ctx.beginPath();
     ctx.arc(cx, cy, outerGlowR, 0, Math.PI * 2);
     ctx.fillStyle = glowGrad;
     ctx.fill();
 
-    // ─── Organic Wave Layers ───
+    // ─── ORGANIC WAVE LAYERS — MUCH MORE VISIBLE ───
     const layers = [
-      { radius: half * 0.78, lineWidth: 0.6, baseAlpha: 0.12 },
-      { radius: half * 0.65, lineWidth: 0.8, baseAlpha: 0.18 },
-      { radius: half * 0.50, lineWidth: 1.0, baseAlpha: 0.25 },
-      { radius: half * 0.38, lineWidth: 1.2, baseAlpha: 0.32 },
+      { radius: half * 0.82, lineWidth: 1.5, baseAlpha: 0.35, glowBlur: 8 },
+      { radius: half * 0.70, lineWidth: 1.8, baseAlpha: 0.45, glowBlur: 10 },
+      { radius: half * 0.56, lineWidth: 2.0, baseAlpha: 0.55, glowBlur: 12 },
+      { radius: half * 0.44, lineWidth: 2.2, baseAlpha: 0.65, glowBlur: 14 },
+      { radius: half * 0.34, lineWidth: 2.5, baseAlpha: 0.75, glowBlur: 16 },
     ];
 
     for (const layer of layers) {
@@ -189,11 +197,11 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       ctx.lineWidth = layer.lineWidth;
       ctx.strokeStyle = getRGBA(layer.baseAlpha);
       ctx.shadowColor = colors.base;
-      ctx.shadowBlur = 3;
+      ctx.shadowBlur = layer.glowBlur;
       ctx.beginPath();
 
-      for (let i = 0; i <= 128; i++) {
-        const angle = (i / 128) * Math.PI * 2;
+      for (let i = 0; i <= 256; i++) {
+        const angle = (i / 256) * Math.PI * 2;
 
         // Accumulate wave displacement from all seeds for this layer
         let displacement = 0;
@@ -203,16 +211,17 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
           if (seed.layer !== layerIdx) continue;
           const wave = Math.sin(angle * seed.freq + t * seed.speed + seed.phase);
           const wave2 = Math.cos(angle * (seed.freq * 0.5) - t * seed.speed * 0.7);
-          displacement += (wave * 0.6 + wave2 * 0.4) * seed.amp * layer.radius;
+          const wave3 = Math.sin(angle * (seed.freq * 1.5) + t * seed.speed * 0.3);
+          displacement += (wave * 0.5 + wave2 * 0.3 + wave3 * 0.2) * seed.amp * layer.radius;
         }
 
         // Add pulsing
         const pulse =
           activeState === "speaking"
-            ? Math.sin(t * 6 + angle * 3) * layer.radius * 0.02
+            ? Math.sin(t * 8 + angle * 4) * layer.radius * 0.04
             : activeState === "listening"
-              ? Math.sin(t * 3 + angle * 2) * layer.radius * 0.015
-              : Math.sin(t * 1.5 + angle) * layer.radius * 0.008;
+              ? Math.sin(t * 4 + angle * 3) * layer.radius * 0.03
+              : Math.sin(t * 2 + angle) * layer.radius * 0.015;
 
         const r = layer.radius + displacement + pulse;
         const x = cx + Math.cos(angle) * r;
@@ -230,173 +239,167 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       ctx.restore();
     }
 
-    // ─── Organic Mesh / Web Effect ───
-    // Draw radial lines connecting center to wave layers
-    const radialCount = 16;
+    // ─── FILLED ORGANIC SPHERE (solid color between layers) ───
+    // This makes the sphere actually filled/visible, not just lines
+    const sphereGrad = ctx.createRadialGradient(cx, cy, half * 0.15, cx, cy, half * 0.82);
+    sphereGrad.addColorStop(0, getRGBA(0.02));
+    sphereGrad.addColorStop(0.3, getRGBA(0.05));
+    sphereGrad.addColorStop(0.7, getRGBA(0.08));
+    sphereGrad.addColorStop(1, getRGBA(0.03));
+    ctx.beginPath();
+    ctx.arc(cx, cy, half * 0.82, 0, Math.PI * 2);
+    ctx.fillStyle = sphereGrad;
+    ctx.fill();
+
+    // ─── ORGANIC MESH / WEB — MORE VISIBLE ───
+    const radialCount = 24;
     ctx.save();
-    ctx.lineWidth = 0.4;
-    ctx.strokeStyle = getRGBA(0.08);
+    ctx.lineWidth = 0.8;
 
     for (let i = 0; i < radialCount; i++) {
       const baseAngle = (i / radialCount) * Math.PI * 2;
       const wobble = Math.sin(t * 1.5 + i * 0.5) * 0.05;
       const angle = baseAngle + wobble;
 
-      ctx.beginPath();
+      const layer0 = layers[0];
+      const layer3 = layers[layers.length - 1];
 
-      // Draw from center edge to outer
-      for (const layer of layers) {
-        const layerIdx = layers.indexOf(layer);
-        let displacement = 0;
-
-        for (const seed of waveSeeds.current) {
-          if (seed.layer !== layerIdx) continue;
-          const wave = Math.sin(angle * seed.freq + t * seed.speed + seed.phase);
-          displacement += wave * seed.amp * layer.radius;
+      // Calculate displacements
+      let disp0 = 0, disp3 = 0;
+      for (const seed of waveSeeds.current) {
+        if (seed.layer === 0) {
+          disp0 += Math.sin(angle * seed.freq + t * seed.speed + seed.phase) * seed.amp * layer0.radius;
         }
-
-        const r = layer.radius + displacement;
-        const x = cx + Math.cos(angle) * r;
-        const y = cy + Math.sin(angle) * r;
-
-        ctx.moveTo(x, y);
-        // Connect to next layer or center
-        const nextLayerIdx = layerIdx + 1;
-        if (nextLayerIdx < layers.length) {
-          const nextLayer = layers[nextLayerIdx];
-          let nextDisp = 0;
-          for (const seed of waveSeeds.current) {
-            if (seed.layer !== nextLayerIdx) continue;
-            const wave = Math.sin(angle * seed.freq + t * seed.speed + seed.phase);
-            nextDisp += wave * seed.amp * nextLayer.radius;
-          }
-          const nextR = nextLayer.radius + nextDisp;
-          const nx = cx + Math.cos(angle) * nextR;
-          const ny = cy + Math.sin(angle) * nextR;
-          ctx.lineTo(nx, ny);
-        } else {
-          // Connect to core
-          ctx.lineTo(
-            cx + Math.cos(angle) * half * 0.25,
-            cy + Math.sin(angle) * half * 0.25
-          );
+        if (seed.layer === 3) {
+          disp3 += Math.sin(angle * seed.freq + t * seed.speed + seed.phase) * seed.amp * layer3.radius;
         }
-
-        ctx.stroke();
       }
+
+      const r0 = layer0.radius + disp0;
+      const r3 = layer3.radius + disp3;
+
+      const alpha = 0.2 + 0.1 * Math.sin(t * 2 + i * 0.3);
+      ctx.strokeStyle = getRGBA(alpha);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * r0, cy + Math.sin(angle) * r0);
+      ctx.lineTo(cx + Math.cos(angle) * r3, cy + Math.sin(angle) * r3);
+      ctx.stroke();
     }
     ctx.restore();
 
-    // ─── Cross-hatch organic pattern between layers ───
-    const hatchCount = 10;
+    // ─── Cross-hatch organic pattern between layers — MORE VISIBLE ───
+    const hatchCount = 16;
     ctx.save();
-    ctx.lineWidth = 0.3;
-    ctx.strokeStyle = getRGBA(0.05);
+    ctx.lineWidth = 0.6;
 
     for (let h = 0; h < hatchCount; h++) {
-      const hAngle = (h / hatchCount) * Math.PI * 2 + t * 0.05;
+      const hAngle = (h / hatchCount) * Math.PI * 2 + t * 0.08;
 
       for (let step = 0; step < layers.length - 1; step++) {
         const fromLayer = layers[step];
         const toLayer = layers[step + 1];
-        const fromR = fromLayer.radius;
-        const toR = toLayer.radius;
+
+        let dispFrom = 0, dispTo = 0;
+        const fromLayerIdx = step;
+        const toLayerIdx = step + 1;
+        for (const seed of waveSeeds.current) {
+          if (seed.layer === fromLayerIdx) {
+            dispFrom += Math.sin(hAngle * seed.freq + t * seed.speed + seed.phase) * seed.amp * fromLayer.radius;
+          }
+          if (seed.layer === toLayerIdx) {
+            dispTo += Math.sin((hAngle + 0.15) * seed.freq + t * seed.speed + seed.phase) * seed.amp * toLayer.radius;
+          }
+        }
+
+        const alpha = 0.15 + 0.05 * Math.sin(t + h);
+        ctx.strokeStyle = getRGBA(alpha);
 
         ctx.beginPath();
-        // Start on fromLayer
-        ctx.moveTo(
-          cx + Math.cos(hAngle) * fromR,
-          cy + Math.sin(hAngle) * fromR
-        );
-        // End on toLayer with offset
-        ctx.lineTo(
-          cx + Math.cos(hAngle + 0.15) * toR,
-          cy + Math.sin(hAngle + 0.15) * toR
-        );
+        ctx.moveTo(cx + Math.cos(hAngle) * (fromLayer.radius + dispFrom), cy + Math.sin(hAngle) * (fromLayer.radius + dispFrom));
+        ctx.lineTo(cx + Math.cos(hAngle + 0.15) * (toLayer.radius + dispTo), cy + Math.sin(hAngle + 0.15) * (toLayer.radius + dispTo));
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(
-          cx + Math.cos(hAngle) * fromR,
-          cy + Math.sin(hAngle) * fromR
-        );
-        ctx.lineTo(
-          cx + Math.cos(hAngle - 0.15) * toR,
-          cy + Math.sin(hAngle - 0.15) * toR
-        );
+        ctx.moveTo(cx + Math.cos(hAngle) * (fromLayer.radius + dispFrom), cy + Math.sin(hAngle) * (fromLayer.radius + dispFrom));
+        ctx.lineTo(cx + Math.cos(hAngle - 0.15) * (toLayer.radius + dispTo), cy + Math.sin(hAngle - 0.15) * (toLayer.radius + dispTo));
         ctx.stroke();
       }
     }
     ctx.restore();
 
-    // ─── Core: Dark Void with Glow Edge ───
-    // This creates the "black hole" effect seen in the video
-    const coreRadius = half * 0.22;
+    // ─── Core: Dark Void with BRIGHT Glow Edge ───
+    const coreRadius = half * 0.18;
 
     // Dark core fill
     const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
-    coreGrad.addColorStop(0, "rgba(0, 0, 0, 0.95)");
-    coreGrad.addColorStop(0.7, "rgba(0, 0, 0, 0.85)");
-    coreGrad.addColorStop(1, getRGBA(0.1));
+    coreGrad.addColorStop(0, "rgba(0, 0, 0, 0.98)");
+    coreGrad.addColorStop(0.6, "rgba(0, 0, 0, 0.9)");
+    coreGrad.addColorStop(1, getRGBA(0.15));
     ctx.beginPath();
     ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
     ctx.fillStyle = coreGrad;
     ctx.fill();
 
-    // Core glow ring
-    const coreGlowR = coreRadius + 3;
-    const coreGlowGrad = ctx.createRadialGradient(cx, cy, coreRadius - 2, cx, cy, coreGlowR + 4);
+    // Core glow ring — BRIGHT
+    const coreGlowR = coreRadius + 4;
+    const coreGlowGrad = ctx.createRadialGradient(cx, cy, coreRadius - 3, cx, cy, coreGlowR + 6);
     coreGlowGrad.addColorStop(0, "transparent");
-    coreGlowGrad.addColorStop(0.3, getRGBA(0.5));
-    coreGlowGrad.addColorStop(0.7, getRGBA(0.2));
+    coreGlowGrad.addColorStop(0.2, getRGBA(0.7));
+    coreGlowGrad.addColorStop(0.5, getRGBA(0.4));
+    coreGlowGrad.addColorStop(0.8, getRGBA(0.1));
     coreGlowGrad.addColorStop(1, "transparent");
     ctx.beginPath();
-    ctx.arc(cx, cy, coreGlowR + 4, 0, Math.PI * 2);
+    ctx.arc(cx, cy, coreGlowR + 6, 0, Math.PI * 2);
     ctx.fillStyle = coreGlowGrad;
     ctx.fill();
 
-    // Core animated ripple rings
-    if (activeState === "speaking" || activeState === "listening") {
-      const rippleCount = activeState === "speaking" ? 5 : 3;
-      const rippleSpeed = activeState === "speaking" ? 0.8 : 0.4;
-      for (let r = 0; r < rippleCount; r++) {
-        const ripplePhase = ((t * rippleSpeed + r * 0.3) % 1);
-        const rippleR = coreRadius + ripplePhase * half * 0.35;
-        const rippleAlpha = 0.3 * (1 - ripplePhase);
+    // Core animated ripple rings — MORE VISIBLE
+    const rippleCount = activeState === "speaking" ? 6 : activeState === "listening" ? 4 : 3;
+    const rippleSpeed = activeState === "speaking" ? 1.0 : activeState === "listening" ? 0.6 : 0.3;
+    for (let r = 0; r < rippleCount; r++) {
+      const ripplePhase = ((t * rippleSpeed + r * 0.25) % 1);
+      const rippleR = coreRadius + ripplePhase * half * 0.45;
+      const rippleAlpha = 0.5 * (1 - ripplePhase);
 
-        ctx.beginPath();
-        ctx.arc(cx, cy, rippleR, 0, Math.PI * 2);
-        ctx.strokeStyle = getRGBA(rippleAlpha);
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, rippleR, 0, Math.PI * 2);
+      ctx.strokeStyle = getRGBA(rippleAlpha);
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = colors.base;
+      ctx.shadowBlur = 5;
+      ctx.stroke();
     }
+    ctx.shadowBlur = 0;
 
-    // ─── Tiny Center Dot ───
+    // ─── Center Dot — BRIGHTER ───
     ctx.beginPath();
-    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fillStyle = colors.base;
-    ctx.globalAlpha = 0.6;
+    ctx.shadowColor = colors.base;
+    ctx.shadowBlur = 15;
+    ctx.globalAlpha = 0.9;
     ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
 
-    // ─── Speaking: Extra Energy Bursts ───
+    // ─── Speaking: Extra Energy Bursts — MORE VISIBLE ───
     if (activeState === "speaking") {
-      const burstCount = 4;
+      const burstCount = 6;
       for (let b = 0; b < burstCount; b++) {
-        const burstPhase = ((t * 1.2 + b * 0.25) % 1);
-        const burstR = coreRadius + burstPhase * half * 0.6;
-        const burstAlpha = 0.15 * (1 - burstPhase);
+        const burstPhase = ((t * 1.5 + b * 0.17) % 1);
+        const burstR = coreRadius + burstPhase * half * 0.7;
+        const burstAlpha = 0.3 * (1 - burstPhase);
 
-        // Organic burst ring
         ctx.save();
         ctx.strokeStyle = getRGBA(burstAlpha);
-        ctx.lineWidth = 0.6;
+        ctx.lineWidth = 1.0;
+        ctx.shadowColor = colors.base;
+        ctx.shadowBlur = 8;
         ctx.beginPath();
 
-        for (let i = 0; i <= 64; i++) {
-          const angle = (i / 64) * Math.PI * 2;
-          const organicWobble = Math.sin(angle * 12 + t * 4 + b) * 3;
+        for (let i = 0; i <= 128; i++) {
+          const angle = (i / 128) * Math.PI * 2;
+          const organicWobble = Math.sin(angle * 12 + t * 4 + b) * 4;
           const r = burstR + organicWobble;
           const x = cx + Math.cos(angle) * r;
           const y = cy + Math.sin(angle) * r;
@@ -410,6 +413,21 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
         ctx.restore();
       }
     }
+
+    // ─── Idle: Gentle breathing pulse rings ───
+    if (activeState === "idle") {
+      for (let r = 0; r < 2; r++) {
+        const breathPhase = ((t * 0.3 + r * 0.5) % 1);
+        const breathR = coreRadius + breathPhase * half * 0.3;
+        const breathAlpha = 0.15 * (1 - breathPhase);
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, breathR, 0, Math.PI * 2);
+        ctx.strokeStyle = getRGBA(breathAlpha);
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+    }
   }, [activeState, colors, size]);
 
   // Handle animation and drawing
@@ -421,12 +439,7 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       frameId = requestAnimationFrame(loop);
     };
 
-    if (activeState !== "idle") {
-      frameId = requestAnimationFrame(loop);
-    } else {
-      // Draw once for idle, then slowly animate
-      frameId = requestAnimationFrame(loop);
-    }
+    frameId = requestAnimationFrame(loop);
 
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
@@ -439,7 +452,7 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
       className={`relative flex items-center justify-center cursor-pointer select-none ${className}`}
       style={{
         width: size,
-        height: size + 24,
+        height: size + 28,
       }}
     >
       {/* Canvas for animated organic sphere */}
@@ -463,7 +476,7 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
             width: size * 0.22,
             height: size * 0.22,
             backgroundColor: "rgba(0, 0, 0, 0.6)",
-            border: `1px solid ${colors.base}`,
+            border: `2px solid ${colors.base}`,
           }}
         >
           <svg
@@ -485,13 +498,14 @@ export function ArcReactor({ state, onClick, size = 180, className = "" }: ArcRe
 
       {/* State label */}
       <div
-        className="absolute font-mono text-[10px] tracking-[0.2em] uppercase whitespace-nowrap text-center"
+        className="absolute font-mono text-[11px] tracking-[0.2em] uppercase whitespace-nowrap text-center"
         style={{
-          bottom: 0,
+          bottom: 2,
           color: colors.base,
-          textShadow: `0 0 8px ${colors.glow}`,
+          textShadow: `0 0 10px ${colors.glow}, 0 0 20px ${colors.glowOuter}`,
           left: "50%",
           transform: "translateX(-50%)",
+          fontWeight: 600,
         }}
       >
         {activeState === "idle" && "CLIQUE PARA FALAR"}
