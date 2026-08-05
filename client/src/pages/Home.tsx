@@ -44,6 +44,7 @@ export default function Home() {
     interimTranscript,
     isListening,
     isSupported: isSpeechSupported,
+    error: speechError,
     silenceDetected,
     startListening,
     stopListening,
@@ -281,6 +282,11 @@ export default function Home() {
         <div className="relative z-10 flex h-screen flex-col">
           {/* Header */}
           <header className="flex items-center justify-between px-6 py-4 border-b border-cyan-400/20">
+            {speechError && (
+              <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-xs animate-bounce">
+                ERRO DE ÁUDIO: {speechError}
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
               <h1 className="font-black tracking-widest text-lg text-cyan-300 text-glow-cyan" style={{ fontFamily: "'Orbitron', sans-serif" }}>

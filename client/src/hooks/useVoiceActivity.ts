@@ -2,13 +2,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 /**
  * useVoiceActivity — VAD com Barge-In Agressivo
- * 
- * CORREÇÃO: Agora usa um sistema de detecção de fala baseado em eventos
- * da Web Speech API em vez de abrir um stream separado do microfone.
- * Isso evita conflitos de permissão e captura dupla de áudio.
- * 
- * Detecta quando o usuário está falando vs silêncio vs pensando.
- * Usado para barge-in: quando o usuário fala enquanto a IA está falando, interrompe.
  */
 export function useVoiceActivity(threshold = 0.06) {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -20,46 +13,39 @@ export function useVoiceActivity(threshold = 0.06) {
   const lastActivityTimeRef = useRef<number>(0);
   const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Barge-in handler: chamado quando detecta fala do usuário enquanto IA fala
   const onBargeInRef = useRef<(() => void) | null>(null);
-  // Track se a IA está falando para barge-in
   const aiSpeakingRef = useRef(false);
 
   const startMonitoring = useCallback(async () => {
-    // PREVENIR double-start: se já está rodando, não inicia de novo
     if (isRunningRef.current) return;
     isRunningRef.current = true;
 
     try {
-      // Fechar stream anterior se existir (evita duplicação)
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          }
+        });
       }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          // Usar canal mono para reduzir processamento
-          channelCount: 1,
-        }
-      });
-      streamRef.current = stream;
 
       const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioContextClass();
-      audioContextRef.current = audioContext;
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new AudioContextClass();
+      }
+      
+      const audioContext = audioContextRef.current!;
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
 
-      const source = audioContext.createMediaStreamSource(stream);
+      const source = audioContext.createMediaStreamSource(streamRef.current);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.4; // Responsivo
+      analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
       analyserRef.current = analyser;
 
@@ -67,8 +53,8 @@ export function useVoiceActivity(threshold = 0.06) {
       const dataArray = new Uint8Array(bufferLength);
       let prevSpeaking = false;
       let silenceFrames = 0;
-      const SILENCE_FRAMES_THRESHOLD = 15; // ~300ms de silêncio para confirmar
-      const ACTIVITY_TIMEOUT = 2000; // 2 segundos sem atividade = silêncio
+      const SILENCE_FRAMES_THRESHOLD = 15;
+      const ACTIVITY_TIMEOUT = 2000;
 
       const checkVolume = () => {
         if (!analyserRef.current) return;
@@ -82,29 +68,23 @@ export function useVoiceActivity(threshold = 0.06) {
         const nowSpeaking = average > threshold;
         const now = Date.now();
 
-        // Debounce: só muda de estado após N frames de confirmação
         if (nowSpeaking && !prevSpeaking) {
           setIsUserSpeaking(true);
           prevSpeaking = true;
           silenceFrames = 0;
           lastActivityTimeRef.current = now;
 
-          // Limpar timeout anterior
           if (silenceTimeoutRef.current) {
             clearTimeout(silenceTimeoutRef.current);
             silenceTimeoutRef.current = null;
           }
 
-          // BARGE-IN: Se IA está falando e detectamos voz do usuário
-          if (aiSpeakingRef.current) {
-            if (onBargeInRef.current) {
-              onBargeInRef.current();
-            }
+          if (aiSpeakingRef.current && onBargeInRef.current) {
+            onBargeInRef.current();
           }
         } else if (!nowSpeaking && prevSpeaking) {
           silenceFrames++;
           if (silenceFrames >= SILENCE_FRAMES_THRESHOLD) {
-            // Configurar timeout para confirmar silêncio
             if (!silenceTimeoutRef.current) {
               silenceTimeoutRef.current = setTimeout(() => {
                 setIsUserSpeaking(false);
@@ -117,13 +97,11 @@ export function useVoiceActivity(threshold = 0.06) {
         } else if (nowSpeaking) {
           silenceFrames = 0;
           lastActivityTimeRef.current = now;
-          // Limpar timeout se estava em silêncio
           if (silenceTimeoutRef.current) {
             clearTimeout(silenceTimeoutRef.current);
             silenceTimeoutRef.current = null;
           }
         } else {
-          // Verificar timeout de inatividade
           if (now - lastActivityTimeRef.current > ACTIVITY_TIMEOUT && prevSpeaking) {
             setIsUserSpeaking(false);
             prevSpeaking = false;
@@ -136,16 +114,10 @@ export function useVoiceActivity(threshold = 0.06) {
 
       checkVolume();
     } catch (err) {
-      console.error("Erro ao acessar microfone para VAD:", err);
+      console.error("VAD Error:", err);
       isRunningRef.current = false;
-      // Tentar novamente em 1 segundo
-      setTimeout(() => {
-        if (isRunningRef.current) {
-          startMonitoring();
-        }
-      }, 1000);
     }
-  }, []);
+  }, [threshold]);
 
   const stopMonitoring = useCallback(() => {
     isRunningRef.current = false;
@@ -153,31 +125,34 @@ export function useVoiceActivity(threshold = 0.06) {
     animationRef.current = null;
     if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
     silenceTimeoutRef.current = null;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    
+    // NÃO parar o stream aqui para permitir que o SpeechRecognition continue usando
+    // Apenas desconectar o analyser se necessário
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
+    
     setIsUserSpeaking(false);
   }, []);
 
-  // Configurar barge-in handler
   const setBargeInHandler = useCallback((handler: () => void) => {
     onBargeInRef.current = handler;
   }, []);
 
-  // Configurar status da IA falando
   const setAISpeakingStatus = useCallback((isSpeaking: boolean) => {
     aiSpeakingRef.current = isSpeaking;
   }, []);
 
   useEffect(() => {
     return () => {
-      isRunningRef.current = false;
       stopMonitoring();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     };
   }, [stopMonitoring]);
 
