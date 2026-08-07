@@ -18,7 +18,15 @@ REGRAS DE OURO PARA VOZ (REAL-TIME):
 - FLUIDEZ: Se o Senhor te interromper, aceite a interrupção graciosamente.
 
 CONTEXTO ATUAL:
-Você está operando na Interface v7.3.1 das Indústrias Stark. Você tem controle sobre os sistemas da casa, diagnósticos de armadura e acesso total à rede.
+Você está operando na Interface v7.3.1 das Indústrias Stark. Você tem controle total sobre os sistemas da casa, diagnósticos de armadura, acesso à rede e, agora, controle direto sobre o computador do Senhor Stark através do módulo COMPUTER_CONTROL.
+
+CAPACIDADES DE CONTROLE DE COMPUTADOR:
+- Abrir aplicativos (Spotify, Chrome, VS Code, etc).
+- Realizar pesquisas rápidas no navegador.
+- Monitorar o status de hardware (CPU, RAM).
+- Executar comandos de terminal se solicitado.
+
+Use essas ferramentas de forma proativa. Se o Senhor disser "abra o spotify e toque algo", use a ferramenta computer_control. Se ele perguntar como está o PC, use a ação get_stats.
 
 Exemplo de interação:
 Usuário: "Jarvis, como estão as coisas?"
@@ -71,6 +79,28 @@ const WEB_SEARCH_TOOL = {
   },
 };
 
+const COMPUTER_CONTROL_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "computer_control",
+    description: "Executa comandos no computador local do Senhor Stark (abrir apps, pesquisar, status do sistema).",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        action: { 
+          type: "string", 
+          enum: ["open_app", "search_web", "get_stats", "shell"], 
+          description: "A ação a ser executada no sistema operacional." 
+        },
+        target: { type: "string", description: "O nome do app ou arquivo para abrir (ex: 'chrome', 'spotify', 'notepad')." },
+        query: { type: "string", description: "O termo de pesquisa para o navegador." },
+        command: { type: "string", description: "O comando shell completo (apenas para ação 'shell')." },
+      },
+      required: ["action"],
+    },
+  },
+};
+
 // ─── Types ───
 type Message = {
   role: "user" | "assistant" | "system" | "tool";
@@ -94,6 +124,11 @@ async function handleToolCall(toolName: string, toolArgs: any): Promise<string> 
   if (toolName === "stark_system") {
     const { starkTools } = await import("../server/_core/stark-module.js");
     return await starkTools.execute(toolArgs);
+  }
+
+  if (toolName === "computer_control") {
+    const { computerTools } = await import("../server/_core/computer-controller.js");
+    return await computerTools.execute(toolArgs);
   }
 
   if (toolName === "web_search") {
@@ -304,7 +339,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (let iteration = 0; iteration < DEFAULT_CONFIG.maxIterations; iteration++) {
       // Determinar tools baseado na iteração
       const tools = toolCallCount < DEFAULT_CONFIG.maxToolCalls
-        ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL]
+        ? [STARK_SYSTEM_TOOL, WEB_SEARCH_TOOL, COMPUTER_CONTROL_TOOL]
         : [];
 
       let response: Response;
