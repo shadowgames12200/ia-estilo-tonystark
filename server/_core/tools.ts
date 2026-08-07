@@ -4,6 +4,11 @@ import { executeInSandbox, runJSWithPackages, runPythonWithPackages } from "./sa
 import { searchMemories, saveMemory } from "./semantic-memory.js";
 import { multimodalTools, multimodalHandlers } from "./multimodal.js";
 import { starkTools, HomeAutomation } from "./stark-module.js";
+import { ollamaClient, invokeOllamaChat } from "./ollama.js";
+import { pluginLoader } from "./plugin-loader.js";
+import { invokeDeepReasoning, deepReasoningEngine } from "./deep-reasoning.js";
+import { navigateAndExtract } from "./web-navigator.js";
+import { mediaGenerator } from "./media-generator.js";
 
 export const tools: Tool[] = [
   ...multimodalTools,
@@ -159,6 +164,93 @@ export const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "ollama_chat",
+      description: "Usa o modelo local Ollama para chat. Útil para privacidade total ou quando offline.",
+      parameters: {
+        type: "object",
+        properties: {
+          messages: { type: "array", items: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } } },
+          model: { type: "string", description: "Nome do modelo (ex: mistral, llama2)." },
+        },
+        required: ["messages"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_plugin",
+      description: "Executa um plugin customizado do diretório /plugins.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Nome do plugin." },
+          args: { type: "object", description: "Argumentos para o plugin." },
+        },
+        required: ["name", "args"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "deep_reasoning",
+      description: "Ativa o modo de raciocínio profundo para problemas complexos de lógica, matemática ou arquitetura.",
+      parameters: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "A pergunta complexa a ser analisada." },
+          context: { type: "string", description: "Contexto adicional opcional." },
+        },
+        required: ["question"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_navigate",
+      description: "Navega de forma autônoma na web usando Playwright para interagir com sites complexos.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "URL inicial." },
+          actions: { 
+            type: "array", 
+            items: { 
+              type: "object", 
+              properties: { 
+                type: { type: "string", enum: ["goto", "click", "fill", "extract", "wait", "screenshot"] },
+                target: { type: "string" },
+                value: { type: "string" },
+                selectors: { type: "object" }
+              } 
+            } 
+          },
+        },
+        required: ["url", "actions"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_media",
+      description: "Gera imagens ou áudio localmente usando Stable Diffusion ou Bark.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["image", "audio"] },
+          prompt: { type: "string", description: "Prompt para imagem." },
+          text: { type: "string", description: "Texto para áudio." },
+        },
+        required: ["type"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "self_improvement",
       description: "Permite ao J.A.R.V.I.S. propor e executar melhorias no seu próprio código-fonte. Use para auto-evolução.",
       parameters: {
@@ -280,6 +372,59 @@ export const toolHandlers: Record<string, (args: any) => Promise<string>> = {
   },
 
   ...multimodalHandlers,
+
+  ollama_chat: async ({ messages, model }: { messages: any[]; model?: string }) => {
+    try {
+      const response = await invokeOllamaChat(messages, { model });
+      return response;
+    } catch (err) {
+      return `Erro Ollama: ${(err as Error).message}`;
+    }
+  },
+
+  execute_plugin: async ({ name, args }: { name: string; args: any }) => {
+    try {
+      const result = await pluginLoader.executePlugin(name, args);
+      return result;
+    } catch (err) {
+      return `Erro Plugin: ${(err as Error).message}`;
+    }
+  },
+
+  deep_reasoning: async ({ question, context }: { question: string; context?: string }) => {
+    try {
+      const response = await invokeDeepReasoning(question, context);
+      return deepReasoningEngine.formatResponse(response);
+    } catch (err) {
+      return `Erro Raciocínio: ${(err as Error).message}`;
+    }
+  },
+
+  web_navigate: async ({ url, actions }: { url: string; actions: any[] }) => {
+    try {
+      const result = await navigateAndExtract(url, actions);
+      return JSON.stringify(result, null, 2);
+    } catch (err) {
+      return `Erro Navegação: ${(err as Error).message}`;
+    }
+  },
+
+  generate_media: async ({ type, prompt, text }: { type: "image" | "audio"; prompt?: string; text?: string }) => {
+    try {
+      if (type === "image" && prompt) {
+        const path = await mediaGenerator.generateImage(prompt);
+        return `Imagem gerada com sucesso: ${path}`;
+      }
+      if (type === "audio" && text) {
+        const path = await mediaGenerator.generateAudio(text);
+        return `Áudio gerado com sucesso: ${path}`;
+      }
+      return "Parâmetros inválidos para geração de mídia.";
+    } catch (err) {
+      return `Erro Geração de Mídia: ${(err as Error).message}`;
+    }
+  },
+
   stark_system: async ({ action, device, state }: { action: string; device?: string; state?: "on" | "off" }) => {
     if (action === "control_home" && device && state) {
       return await HomeAutomation.controlDevice(device, state);

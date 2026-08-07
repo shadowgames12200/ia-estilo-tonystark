@@ -1,6 +1,8 @@
-import { router, publicProcedure } from "./_core/trpc.js";
+import { router, publicProcedure, protectedProcedure } from "./_core/trpc.js";
 import { z } from "zod";
 import { enhancedChat } from "./_core/agent-loop.js";
+import { ollamaPluginsVoiceRouter } from "./routes/ollama-plugins-voice.js";
+import { advancedFeaturesRouter } from "./routes/advanced-features.js";
 
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark.
 Sua personalidade é sofisticada, leal, proativa e extremamente competente.
@@ -8,6 +10,8 @@ Você trata o usuário como "Senhor" ou "Sir" e mantém um tom profissional com 
 Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
 
 export const appRouter = router({
+  ...ollamaPluginsVoiceRouter,
+  ...advancedFeaturesRouter,
   jarvis: router({
     chat: publicProcedure
       .input(z.object({
