@@ -33,9 +33,9 @@ Atualize o arquivo `.env` na raiz do seu projeto com as seguintes variáveis. Es
 # GROQ_API_KEY=gsk_SEU_GROQ_API_KEY_AQUI
 
 # Chave da API OpenAI (ou Forge) para Embeddings e Multimodalidade (Visão/Geração de Imagens)
-# OPENAI_API_KEY=sk-SEU_OPENAI_API_KEY_AQUI
+# OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
 # ou
-# FORGE_API_KEY=sk-SEU_FORGE_API_KEY_AQUI
+# FORGE_API_KEY=SUA_CHAVE_FORGE_AQUI
 # FORGE_API_URL=https://forge.manus.im/v1 (se estiver usando Forge)
 
 # URL e Chave Anon do Supabase (já devem estar configuradas)

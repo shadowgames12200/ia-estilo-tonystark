@@ -1,7 +1,15 @@
 node_modules/
+voice-daemon/.venv/
+voice-daemon/.venv-tts/
+__pycache__/
+*.pyc
 dist/
 .env
 .env.local
 .DS_Store
 *.log
 .vercel
+uploads/
+
+# Memória e estado privados gerados localmente
+.jarvis-consciousness-state/
