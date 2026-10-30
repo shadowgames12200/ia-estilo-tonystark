@@ -43,18 +43,15 @@ export function isGeminiConfigured(): boolean {
 }
 
 const assertGeminiApiKey = () => {
-  if (!ENV.geminiApiKey) {
+  const apiKey = ENV.geminiApiKey?.trim();
+
+  // O Google AI Studio também emite authorization keys no formato AQ.Ab...
+  // Não restringir a chave ao formato antigo AIza...
+  if (!apiKey) {
     throw new Error(
-      "GEMINI_API_KEY is not configured. " +
-      "Please add the GEMINI_API_KEY environment variable to your server settings. " +
-      "Get your key at https://aistudio.google.com/apikey"
-    );
-  }
-  // Verificar se a key parece válida (começa com AIza)
-  if (!ENV.geminiApiKey.startsWith("AIza")) {
-    throw new Error(
-      "GEMINI_API_KEY is invalid. Keys must start with 'AIza'. " +
-      "Get your key at https://aistudio.google.com/apikey"
+      "GEMINI_API_KEY não configurada. " +
+      "Adicione GEMINI_API_KEY ao arquivo .env. " +
+      "Obtenha uma chave em https://aistudio.google.com/apikey"
     );
   }
 };
@@ -84,7 +81,7 @@ const fetchWithBackoff = async (url: string, init: RequestInit): Promise<Respons
       }
 
       // Se for erro de autenticação (400/401), não fazer retry
-      if (response.status === 400 || response.status === 401) {
+      if ([400, 401, 403, 404].includes(response.status)) {
         return response;
       }
 
@@ -114,7 +111,7 @@ export async function invokeGemini(params: GeminiGenerateParamsWithStream): Prom
   assertGeminiApiKey();
 
   const { contents, maxOutputTokens, temperature = 0.7, stream = false } = params;
-  const model = params.model ?? "gemini-2.0-flash";
+  const model = params.model ?? ENV.geminiModel;
 
   const payload: Record<string, unknown> = {
     contents,
@@ -156,6 +153,8 @@ export async function invokeGemini(params: GeminiGenerateParamsWithStream): Prom
 
     if (response.status === 400) {
       errorMsg = `Gemini API bad request: ${errorText}`;
+    } else if (response.status === 404) {
+      errorMsg = `Gemini model/endpoint not found: ${errorText}`;
     } else if (response.status === 429) {
       errorMsg = "Gemini API rate limit exceeded. Please wait a moment and try again.";
     } else if (response.status >= 500) {
@@ -271,15 +270,15 @@ export async function invokeLLMWithFallback(
 
   // Fallback to Gemini
   try {
-    if (!ENV.geminiApiKey || !ENV.geminiApiKey.startsWith("AIza")) {
-      throw new Error("GEMINI_API_KEY not configured or invalid");
+    if (!ENV.geminiApiKey?.trim()) {
+      throw new Error("GEMINI_API_KEY não configurada");
     }
 
     const geminiContents = convertToGeminiContents(messages);
 
     const response = await invokeGemini({
       contents: geminiContents,
-      model: "gemini-2.0-flash",
+      model: ENV.geminiModel,
       temperature,
       maxOutputTokens: maxTokens,
       systemInstruction: systemPrompt,
@@ -289,7 +288,7 @@ export async function invokeLLMWithFallback(
       const text = extractTextFromGeminiResponse(response as GeminiResponse);
       return {
         content: text,
-        model: "gemini-2.0-flash",
+        model: ENV.geminiModel,
       };
     }
   } catch (err) {

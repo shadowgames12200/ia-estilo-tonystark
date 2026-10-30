@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 export const ENV = {
   appId: process.env.VITE_APP_ID ?? "dev-ai-assistant",
   cookieSecret: process.env.JWT_SECRET ?? "dev-ai-assistant-secret-key-default",
@@ -10,6 +12,7 @@ export const ENV = {
   groqApiKey: process.env.GROQ_API_KEY ?? "",
   groqApiUrl: process.env.GROQ_API_BASE ?? "https://api.groq.com/openai/v1",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
   supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
   githubToken: process.env.GITHUB_TOKEN ?? "",
@@ -24,4 +27,8 @@ export const ENV = {
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
   ollamaModel: process.env.OLLAMA_MODEL ?? "llama3",
   hybridModeEnabled: process.env.HYBRID_MODE_ENABLED === "true",
+  localOnlyMode: process.env.LOCAL_ONLY_MODE !== "false",
+  maxJsonBody: process.env.JARVIS_MAX_JSON_BODY ?? "2mb",
+  maxMessageChars: Number(process.env.JARVIS_MAX_MESSAGE_CHARS ?? 12000),
+  maxTtsChars: Number(process.env.JARVIS_MAX_TTS_CHARS ?? 4000),
 };

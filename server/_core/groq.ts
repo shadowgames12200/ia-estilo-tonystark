@@ -136,12 +136,11 @@ export async function invokeGroq(params: GroqInvokeParamsWithStream): Promise<Gr
 
   const { messages, maxTokens, temperature, stream = false } = params;
   
-  // Model Routing Dinâmico: seleciona modelo automático se não forçado
+  // Model Routing Dinâmico
   let modelConfig;
   if (params.model) {
     modelConfig = { model: params.model, maxTokens: params.maxTokens ?? 4096, temperature: temperature ?? 0.5, label: "Forced" };
   } else {
-    // Extrai o conteúdo da última mensagem do usuário para detectar complexidade
     const userMsg = [...messages].reverse().find(m => m.role === "user");
     const content = typeof userMsg?.content === "string" ? userMsg.content : "";
     const complexity = detectComplexity(content);
@@ -163,7 +162,7 @@ export async function invokeGroq(params: GroqInvokeParamsWithStream): Promise<Gr
     payload.max_tokens = finalMaxTokens;
   }
 
-  console.log(`[Groq] Calling model: ${model} [${modelConfig.label}] (stream: ${stream}, tokens: ${finalMaxTokens})`);
+
 
   const response = await fetchWithBackoff(GROQ_API_URL(), {
     method: "POST",
@@ -215,7 +214,53 @@ export function isGroqResponse(response: GroqResponse | ReadableStream): respons
 export async function invokeGroqNonStream(params: GroqInvokeParams): Promise<GroqResponse> {
   const response = await invokeGroq(params);
   if (!isGroqResponse(response)) {
-    throw new Error("Unexpected streaming response when non-stream was expected");
+    // Se o invokeGroq retornou algo que não passou no isGroqResponse, mas é o que queremos
+    if ((response as any).choices) return response as any;
+    
+    // Se for um stream no Node.js (IncomingMessage ou Readable)
+    const stream = response as any;
+    const decoder = new TextDecoder();
+    let result = "";
+    
+    // Se for um objeto com body (Response do fetch moderno)
+    if (stream.body && stream.body[Symbol.asyncIterator]) {
+      for await (const chunk of stream.body) {
+        result += decoder.decode(chunk);
+      }
+    } else if (stream[Symbol.asyncIterator]) {
+      for await (const chunk of stream) {
+        result += typeof chunk === "string" ? chunk : decoder.decode(chunk);
+      }
+    } else {
+      result = stream.toString();
+    }
+    
+    if (result === "[object Object]") {
+       // O objeto já foi parseado em algum lugar ou é um Response
+       if (stream.json) return await stream.json();
+       return stream; 
+    }
+
+    try {
+      return JSON.parse(result);
+    } catch (e) {
+      let fullContent = "";
+      const lines = result.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") break;
+          try {
+            const json = JSON.parse(data);
+            const content = json.choices[0]?.delta?.content || json.choices[0]?.message?.content || "";
+            fullContent += content;
+          } catch (err) {}
+        }
+      }
+      return {
+        choices: [{ message: { content: fullContent } }]
+      } as any;
+    }
   }
   return response;
 }
