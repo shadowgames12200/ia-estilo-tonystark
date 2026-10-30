@@ -25,6 +25,14 @@
       "destination": "/api/auto-improve"
     },
     {
+      "source": "/api/upload",
+      "destination": "/api/upload"
+    },
+    {
+      "source": "/api/metrics",
+      "destination": "/api/metrics"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -44,6 +52,13 @@
     },
     "api/auto-improve.ts": {
       "maxDuration": 180
+    },
+    "api/upload.ts": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/metrics.ts": {
+      "maxDuration": 10
     }
   }
 }
