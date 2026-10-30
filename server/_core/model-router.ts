@@ -13,7 +13,7 @@
 export type TaskComplexity = "simple" | "medium" | "complex" | "critical" | "multimodal" | "code" | "creative";
 
 export type ModelConfig = {
-  provider: "groq" | "openai" | "anthropic" | "google" | "ollama";
+  provider: "groq" | "openai" | "anthropic" | "google" | "ollama" | "lmstudio";
   model: string;
   maxTokens: number;
   temperature: number;
@@ -21,13 +21,33 @@ export type ModelConfig = {
   description: string;
 };
 
+export type ModelRouteDecision = {
+  config: ModelConfig;
+  complexity: TaskComplexity;
+  reason: string;
+  fallbackChain: string[];
+  requiresTools: boolean;
+  requiresVerification: boolean;
+};
+
 // ─── Model Registry ───
+
+const LOCAL_FAST_MODEL = (process.env.LOCAL_FAST_MODEL || "qwen/qwen3-4b-2507").trim();
+const LOCAL_AGENT_MODEL = (process.env.LOCAL_AGENT_MODEL || "qwen/qwen3-8b").trim();
+const LOCAL_VISION_MODEL = (process.env.LOCAL_VISION_MODEL || "qwen/qwen3-vl-4b").trim();
+
+const LOCAL_AGENT_KEYWORDS = [
+  "zip", "arquivo", "arquivos", "projeto", "pasta", "repositório", "repositorio",
+  "código", "codigo", "programar", "implementar", "corrigir", "refatorar", "debug",
+  "build", "teste", "testes", "docker", "plugin", "api", "analisar código", "analisar codigo",
+  "modificar", "editar arquivos", "gerar um zip", "compactar", "salvar", "entregar", "artefato", "executar", "compilar", "gerar exe", "gerar .exe", "permissão", "permissao", "login", "oauth", "navegar", "corrigir projeto", "testar projeto",
+];
 
 const MODELS: Record<TaskComplexity, ModelConfig> = {
   // Tarefas simples: saudações, perguntas curtas, status
   simple: {
-    provider: "groq",
-    model: "llama-3.1-8b-instant",
+    provider: "lmstudio",
+    model: LOCAL_FAST_MODEL,
     maxTokens: 1024,
     temperature: 0.7,
     label: "Ultra-Fast",
@@ -36,8 +56,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas médias: perguntas gerais, explicações curtas
   medium: {
-    provider: "groq",
-    model: "gemma2-9b-it",
+    provider: "lmstudio",
+    model: LOCAL_FAST_MODEL,
     maxTokens: 2048,
     temperature: 0.6,
     label: "Balanced",
@@ -46,8 +66,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas complexas: análise, planejamento, código complexo
   complex: {
-    provider: "groq",
-    model: "llama-3.3-70b-versatile",
+    provider: "lmstudio",
+    model: LOCAL_AGENT_MODEL,
     maxTokens: 4096,
     temperature: 0.5,
     label: "Power",
@@ -56,8 +76,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas críticas: auto-melhoria, modificações de sistema
   critical: {
-    provider: "anthropic",
-    model: "claude-3-5-sonnet-20241022",
+    provider: "lmstudio",
+    model: LOCAL_AGENT_MODEL,
     maxTokens: 8192,
     temperature: 0.3,
     label: "Critical",
@@ -66,8 +86,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas multimodais: visão, análise de imagens
   multimodal: {
-    provider: "openai",
-    model: "gpt-4o",
+    provider: "lmstudio",
+    model: LOCAL_VISION_MODEL,
     maxTokens: 4096,
     temperature: 0.4,
     label: "Vision",
@@ -76,8 +96,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas de código: programação, debugging
   code: {
-    provider: "anthropic",
-    model: "claude-3-5-sonnet-20241022",
+    provider: "lmstudio",
+    model: LOCAL_AGENT_MODEL,
     maxTokens: 8192,
     temperature: 0.2,
     label: "Code",
@@ -86,8 +106,8 @@ const MODELS: Record<TaskComplexity, ModelConfig> = {
   
   // Tarefas criativas: escrita criativa, brainstorming
   creative: {
-    provider: "google",
-    model: "gemini-2.0-flash",
+    provider: "lmstudio",
+    model: LOCAL_AGENT_MODEL,
     maxTokens: 4096,
     temperature: 0.8,
     label: "Creative",
@@ -181,15 +201,79 @@ export function selectModel(complexity: TaskComplexity): ModelConfig {
 }
 
 /**
+ * Aplica presets de latência ao modelo selecionado.
+ * latencyLevel: 0 (máxima fidelidade) → 4 (ultra rápido)
+ */
+export function applyLatencyPreset(config: ModelConfig, latencyLevel: number): ModelConfig {
+  const level = Math.max(0, Math.min(4, latencyLevel));
+  
+  // Presets de latência
+  const presets = [
+    // 0: Alta Fidelidade (máxima qualidade, sem pressa)
+    { maxTokens: 8192, temperature: 0.3 },
+    // 1: Qualidade Alta (boa qualidade com resposta rápida)
+    { maxTokens: 4096, temperature: 0.5 },
+    // 2: Equilibrado (padrão)
+    { maxTokens: 2048, temperature: 0.6 },
+    // 3: Rápido (respostas curtas e diretas)
+    { maxTokens: 1024, temperature: 0.7 },
+    // 4: Ultra Rápido (máxima velocidade, respostas curtas para voz)
+    { maxTokens: 256, temperature: 0.65 },
+  ];
+  
+  const preset = presets[level];
+  return {
+    ...config,
+    maxTokens: preset.maxTokens,
+    temperature: preset.temperature,
+  };
+}
+
+/**
  * Seleciona o modelo baseado no conteúdo da mensagem.
  */
 export function selectModelForContent(
   content: string,
   hasImage = false,
-  hasFile = false
+  hasFile = false,
+  latencyLevel = 4
 ): ModelConfig {
   const complexity = detectComplexity(content, hasImage, hasFile);
-  return selectModel(complexity);
+  const config = selectModel(complexity);
+  return applyLatencyPreset(config, latencyLevel);
+}
+
+/** Seleciona o modelo local rápido ou agente conforme a tarefa. */
+export function selectLocalModelForContent(content: string, hasImage = false, hasFile = false): string {
+  const lower = content.toLowerCase();
+  const needsAgent = hasImage || hasFile || LOCAL_AGENT_KEYWORDS.some(keyword => lower.includes(keyword));
+  return needsAgent ? LOCAL_AGENT_MODEL : LOCAL_FAST_MODEL;
+}
+
+/** Decisão única para impedir que tarefas com efeitos externos caiam no modelo rápido. */
+export function routeLocalTask(content: string, options: { hasImage?: boolean; hasFile?: boolean; latencyLevel?: number } = {}): ModelRouteDecision {
+  const hasImage = Boolean(options.hasImage);
+  const hasFile = Boolean(options.hasFile);
+  const complexity = detectComplexity(content, hasImage, hasFile);
+  const lower = content.toLowerCase();
+  const requiresTools = /\b(crie|criar|salve|salvar|execute|executar|rode|rodar|compile|compilar|corrija|corrigir|edite|editar|abra|feche|navegue|login|organize|analise projeto|teste|build)\b/i.test(lower) || hasFile;
+  const requiresVerification = /\b(crie|criar|salve|salvar|execute|executar|compile|compilar|corrija|corrigir|edite|editar|gere|gerar|entregue|entregar|publique|publicar)\b/i.test(lower);
+  const selected = selectModel(complexity);
+  const config = applyLatencyPreset(selected, options.latencyLevel ?? (requiresTools ? 1 : 3));
+  const reason = hasImage ? "pedido multimodal" : requiresVerification ? "ação com efeito ou entrega exige modelo agente e verificação" : requiresTools ? "pedido requer uso de ferramentas" : "conversa sem efeitos externos";
+  return {
+    config,
+    complexity,
+    reason,
+    fallbackChain: [LOCAL_AGENT_MODEL, LOCAL_FAST_MODEL].filter((value, index, list) => list.indexOf(value) === index),
+    requiresTools,
+    requiresVerification,
+  };
+}
+
+/** Retorna os IDs locais efetivos para diagnóstico e testes. */
+export function getLocalModelIds(): { fast: string; agent: string } {
+  return { fast: LOCAL_FAST_MODEL, agent: LOCAL_AGENT_MODEL };
 }
 
 /**
@@ -221,6 +305,11 @@ export function getModelEndpoint(config: ModelConfig): { url: string; authHeader
       return {
         url: "/api/generate", // Ollama endpoint relativo ao host
         authHeader: "",
+      };
+    case "lmstudio":
+      return {
+        url: "http://127.0.0.1:1234/v1/chat/completions",
+        authHeader: "Authorization",
       };
     default:
       return getModelEndpoint({ ...MODELS.complex });
