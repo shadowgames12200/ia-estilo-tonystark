@@ -117,8 +117,8 @@ class DeepReasoningEngine {
         throw new Error(`API error: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const responseText = data.choices[0]?.message?.content || "";
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const responseText = data.choices?.[0]?.message?.content || "";
       const thinking = this.extractThinking(responseText);
 
       // Extrair a resposta final (última parte após "Resposta Final:" ou similar)
