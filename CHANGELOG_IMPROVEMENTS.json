@@ -1,0 +1,226 @@
+[
+  {
+    "id": 1,
+    "timestamp": "2026-08-10T21:00:00Z",
+    "description": "Adicionar botão CHAT no header para mostrar/ocultar o histórico de conversa",
+    "filesAffected": ["client/src/pages/Home.tsx"],
+    "expectedChanges": [
+      "isChatOpen",
+      "MessageSquare",
+      "{isChatOpen &&",
+      "setIsChatOpen"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 2,
+    "timestamp": "2026-08-10T21:00:00Z",
+    "description": "Trocar sessionStorage por localStorage para persistir histórico ao fechar navegador",
+    "filesAffected": ["client/src/pages/Home.tsx"],
+    "expectedChanges": [
+      "localStorage.getItem(\"jarvis-history\")",
+      "localStorage.setItem(\"jarvis-history\")"
+    ],
+    "forbiddenChanges": [
+      "sessionStorage.getItem(\"jarvis-history\")",
+      "sessionStorage.setItem(\"jarvis-history\")"
+    ],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 3,
+    "timestamp": "2026-08-10T21:00:00Z",
+    "description": "Remover limite de 10 mensagens no histórico de conversa",
+    "filesAffected": ["client/src/pages/Home.tsx"],
+    "expectedChanges": [],
+    "forbiddenChanges": [
+      "slice(-MAX_HISTORY)"
+    ],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 4,
+    "timestamp": "2026-08-10T21:00:00Z",
+    "description": "Corrigir parsing do timestamp do histórico para não gerar Invalid Date",
+    "filesAffected": ["client/src/pages/Home.tsx"],
+    "expectedChanges": [
+      "m.timestamp ? new Date(m.timestamp) : new Date()"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 5,
+    "timestamp": "2026-09-06T03:10:00Z",
+    "description": "Implementar voz híbrida instantânea, reduzir a latência do primeiro áudio, segmentar respostas menores e separar o roteamento rápido do pesado",
+    "filesAffected": [
+      "client/src/hooks/useKITTVoice.ts",
+      "client/src/hooks/useStreamingChatWithVoice.ts",
+      "client/src/components/SettingsPanel.tsx",
+      "client/src/pages/Home.tsx",
+      "api/chat-stream.ts"
+    ],
+    "expectedChanges": [
+      "voiceMode",
+      "speakImmediately",
+      "speechSynthesis",
+      "MIN_SPEAKABLE_CHARS"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 6,
+    "timestamp": "2026-09-06T03:20:00Z",
+    "description": "Implementar melhorias gerais: observar-agir-verificar, recuperação limitada, telemetria, memória com esquecimento, proteção da autoedição e pronúncia técnica",
+    "filesAffected": [
+      "server/_core/computer-controller.ts",
+      "server/_core/autobiographical-memory.ts",
+      "server/_core/tools.ts",
+      "server/_core/agent-approval-policy.ts",
+      "server/_core/code-change-manager.ts",
+      "server/_core/operation-metrics.ts",
+      "client/src/hooks/useKITTVoice.ts"
+    ],
+    "expectedChanges": [
+      "retryOnce",
+      "Verificação pós-ação",
+      "forgetAutobiographicalMemory",
+      "operation-metrics",
+      "Arquivo protegido",
+      "Supa base"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 7,
+    "timestamp": "2026-09-06T03:42:00Z",
+    "description": "Adicionar modos Conversar, Planejar e Executar, parada global e indicador de etapa operacional",
+    "filesAffected": [
+      "client/src/pages/Home.tsx",
+      "client/src/hooks/useKITTVoice.ts",
+      "client/src/hooks/useStreamingChatWithVoice.ts",
+      "api/chat-stream.ts"
+    ],
+    "expectedChanges": [
+      "operationMode",
+      "handleStopAll",
+      "MODO OPERACIONAL ATUAL",
+      "ETAPA: ANALISANDO"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 8,
+    "timestamp": "2026-09-06T03:47:00Z",
+    "description": "Implementar observabilidade persistente com métricas de latência, modelos, ferramentas, falhas, rollbacks e interrupções",
+    "filesAffected": [
+      "server/_core/operation-metrics.ts",
+      "api/chat-stream.ts",
+      "server/_core/self-improvement.ts",
+      "api/metrics.ts",
+      "client/src/components/ObservabilityPanel.tsx",
+      "client/src/pages/Home.tsx"
+    ],
+    "expectedChanges": [
+      "summarizeOperationMetrics",
+      "eventType: \"chat\"",
+      "eventType: \"rollback\"",
+      "OBSERVABILIDADE",
+      "api/metrics"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 9,
+    "timestamp": "2026-09-06T03:54:00Z",
+    "description": "Corrigir rota local de métricas, registrar rota na Vercel, evitar falso timeout do LM Studio e alinhar timeout do TTS",
+    "filesAffected": [
+      "server/_core/index.ts",
+      "vercel.json",
+      "server/_core/local-openai-provider.ts",
+      "api/tts-stream.ts"
+    ],
+    "expectedChanges": [
+      "metricsHandler",
+      "MODEL_LIST_TIMEOUT_MS",
+      "ELEVENLABS_TIMEOUT_MS = 12_000"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 10,
+    "timestamp": "2026-09-06T04:21:00Z",
+    "description": "Adicionar modo AUTOMÁTICO funcional para decidir entre conversar, planejar e executar sem troca manual",
+    "filesAffected": [
+      "client/src/pages/Home.tsx",
+      "client/src/hooks/useKITTVoice.ts",
+      "api/chat-stream.ts"
+    ],
+    "expectedChanges": [
+      "operationMode: \"auto\"",
+      "AUTOMÁTICO",
+      "resolveAutomaticOperationMode"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 11,
+    "timestamp": "2026-09-06T04:40:00Z",
+    "description": "Transformar a Jarvis em arquitetura local-first com classificador determinístico, base de conhecimento local e roteamento entre os dois modelos Qwen",
+    "filesAffected": [
+      "server/_core/local-first-router.ts",
+      "server/_core/local-knowledge.ts",
+      "api/chat-stream.ts",
+      "tests/local-first-router.test.ts"
+    ],
+    "expectedChanges": [
+      "classifyLocalRequest",
+      "buildLocalKnowledgeContext",
+      "chooseLocalModel",
+      "qwen/qwen3-4b-2507",
+      "qwen/qwen3-8b"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  },
+  {
+    "id": 12,
+    "timestamp": "2026-09-06T04:47:00Z",
+    "description": "Adicionar camada de aprendizado local corrigível com preferências, rotina modo trabalho, confiança por intenção e dicionário técnico de pronúncia",
+    "filesAffected": [
+      "server/_core/local-learning.ts",
+      "server/_core/local-first-router.ts",
+      "api/chat-stream.ts",
+      "client/src/hooks/useKITTVoice.ts",
+      "tests/local-learning.test.ts"
+    ],
+    "expectedChanges": [
+      "learnPreference",
+      "modo trabalho",
+      "confidence",
+      "A P I",
+      "JARVIS_LOCAL_LEARNING_DIR"
+    ],
+    "forbiddenChanges": [],
+    "implemented": true,
+    "validated": true
+  }
+]
