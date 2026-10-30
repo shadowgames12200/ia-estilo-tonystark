@@ -1,191 +1,153 @@
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
 
-export type AutoImproveStep = {
-  id: number;
-  name: string;
-  status: "pending" | "running" | "success" | "failed" | "skipped";
-  detail?: string;
-};
-
-export type AutoImproveTest = {
-  id: number;
-  name: string;
-  status: "pass" | "fail" | "error";
-  duration: number;
-  message?: string;
+export type ImprovementProposal = {
+  id: string;
+  title: string;
+  description: string;
+  request: string;
+  filesToChange: Array<{ path: string; summary: string }>;
+  risks: string[];
+  benefits: string[];
+  estimatedTime: string;
+  status: "pending" | "approved" | "rejected" | "in-progress" | "completed" | "failed";
+  backupId?: string;
+  createdAt: string;
+  analysisStatus?: "evidence-found" | "insufficient-evidence" | "analysis-failed";
+  confidence?: number;
+  evidence?: Array<{ file: string; line?: number; excerpt: string; reason: string }>;
+  blockedReason?: string;
+  projectSummary?: { projectType: string; fileCount: number; sourceFileCount: number; resources: number; events: number; dependencies: number; technologies: string[]; warnings: string[] };
+  pipeline?: Array<{ name: string; status: string; detail: string }>;
+  plan?: { objective: string; approach: string[]; checks: string[]; planner: string };
+  review?: { passed: boolean; findings: string[]; regressions: string[]; reviewedFiles: string[]; reviewer: string };
 };
 
 export type AutoImproveState = {
   isActive: boolean;
-  steps: AutoImproveStep[];
-  tests: AutoImproveTest[];
+  steps: Array<{ id: number; name: string; status: string; detail?: string }>;
+  tests: Array<{ id: number; name: string; status: string; duration: number; message?: string }>;
   error: string | null;
   done: boolean;
   progress: number;
   message: string;
+  proposal: ImprovementProposal | null;
+  lastResult: any;
+};
+
+const initialState: AutoImproveState = {
+  isActive: false,
+  steps: [],
+  tests: [],
+  error: null,
+  done: false,
+  progress: 0,
+  message: "",
+  proposal: null,
+  lastResult: null,
 };
 
 export function useAutoImprovement() {
-  const [state, setState] = useState<AutoImproveState>({
-    isActive: false,
-    steps: [],
-    tests: [],
-    error: null,
-    done: false,
-    progress: 0,
-    message: "",
-  });
+  const [state, setState] = useState<AutoImproveState>(initialState);
 
-  const abortRef = useRef<AbortController | null>(null);
-
-  const startImprovement = useCallback(
-    async (request: string) => {
-      setState({
-        isActive: true,
-        steps: [],
-        tests: [],
-        error: null,
-        done: false,
-        progress: 0,
-        message: "Iniciando auto-melhoria...",
-      });
-
-      abortRef.current = new AbortController();
-
-      try {
-        const response = await fetch("/api/auto-improve", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            request,
-            authToken: "", // Opcional — pode ser enviado se necessário
-          }),
-          signal: abortRef.current.signal,
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const event = JSON.parse(line.slice(6));
-
-                switch (event.type) {
-                  case "step":
-                    setState((prev) => ({
-                      ...prev,
-                      steps: [...prev.steps.filter((s) => s.id !== event.step.id), event.step],
-                      message: event.step.detail || event.step.name,
-                      progress: (event.step.id / 10) * 100,
-                    }));
-                    break;
-
-                  case "test":
-                    setState((prev) => ({
-                      ...prev,
-                      tests: [...prev.tests, event.test],
-                    }));
-                    break;
-
-                  case "error":
-                    setState((prev) => ({
-                      ...prev,
-                      error: event.message,
-                      isActive: false,
-                      done: true,
-                    }));
-                    break;
-
-                  case "done":
-                    setState((prev) => ({
-                      ...prev,
-                      isActive: false,
-                      done: true,
-                      progress: 100,
-                      message: event.message || "Auto-melhoria concluída!",
-                    }));
-                    break;
-
-                  default:
-                    break;
-                }
-              } catch (parseError) {
-                if ((parseError as Error).message && !(parseError as Error).message.includes("Parse")) {
-                  throw parseError;
-                }
-              }
-            }
-          }
-        }
-      } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          setState((prev) => ({
-            ...prev,
-            isActive: false,
-            done: true,
-            message: "Auto-melhoria cancelada pelo usuário.",
-          }));
-          return;
-        }
-        const message = err instanceof Error ? err.message : "Erro desconhecido";
-        setState((prev) => ({
-          ...prev,
-          error: message,
-          isActive: false,
-          done: true,
-        }));
-      }
-    },
-    []
-  );
-
-  const cancelImprovement = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-    setState((prev) => ({
-      ...prev,
-      isActive: false,
-      done: true,
-      message: "Cancelado pelo usuário.",
-    }));
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({
-      isActive: false,
-      steps: [],
-      tests: [],
-      error: null,
-      done: false,
-      progress: 0,
-      message: "",
+  const callApi = useCallback(async (action: string, payload: Record<string, unknown> = {}) => {
+    const response = await fetch("/api/auto-improve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
     });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || data.result?.message || `HTTP ${response.status}`);
+    return data;
   }, []);
+
+  const proposeImprovement = useCallback(async (request: string) => {
+    setState({ ...initialState, isActive: true, message: "Analisando o pedido sem alterar arquivos..." });
+    try {
+      const data = await callApi("propose", { request });
+      setState((prev) => ({ ...prev, isActive: false, proposal: data.proposal, steps: (data.proposal?.pipeline || []).map((step: any, index: number) => ({ id: index + 1, name: step.name, status: step.status, detail: step.detail })), message: "Proposta pronta para sua revisão." }));
+      return data.proposal as ImprovementProposal;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar proposta.";
+      setState((prev) => ({ ...prev, isActive: false, done: true, error: message, message }));
+      return null;
+    }
+  }, [callApi]);
+
+  const approveImprovement = useCallback(async () => {
+    if (!state.proposal) return false;
+    setState((prev) => ({ ...prev, isActive: true, error: null, message: "Registrando sua aprovação..." }));
+    try {
+      const data = await callApi("approve", { proposalId: state.proposal.id });
+      setState((prev) => ({ ...prev, isActive: false, proposal: data.proposal, steps: (data.proposal?.pipeline || prev.steps).map((step: any, index: number) => ({ id: index + 1, name: step.name, status: step.status, detail: step.detail })), message: "Aprovado. Pronto para iniciar a correção." }));
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível aprovar.";
+      setState((prev) => ({ ...prev, isActive: false, error: message, message }));
+      return false;
+    }
+  }, [callApi, state.proposal]);
+
+  const executeImprovement = useCallback(async () => {
+    if (!state.proposal || state.proposal.status !== "approved") return false;
+    setState((prev) => ({ ...prev, isActive: true, done: false, error: null, progress: 20, message: "Aplicando a correção com backup..." }));
+    try {
+      const data = await callApi("execute", { proposalId: state.proposal.id });
+      const result = data.result;
+      setState((prev) => ({
+        ...prev,
+        isActive: false,
+        done: true,
+        progress: 100,
+        proposal: data.proposal || prev.proposal,
+        steps: (result?.pipeline || data.proposal?.pipeline || prev.steps).map((step: any, index: number) => ({ id: index + 1, name: step.name, status: step.status, detail: step.detail })),
+        lastResult: result,
+        tests: (result?.testResults || []).map((test: any, index: number) => ({ id: index + 1, name: `Validação ${index + 1}`, status: test.passed ? "pass" : "fail", duration: test.duration, message: test.errors })),
+        message: result?.message || "Execução concluída.",
+        error: result?.success ? null : result?.message || "A validação falhou; alterações revertidas.",
+      }));
+      return Boolean(result?.success);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao executar a correção.";
+      setState((prev) => ({ ...prev, isActive: false, done: true, error: message, message }));
+      return false;
+    }
+  }, [callApi, state.proposal]);
+
+  const rejectImprovement = useCallback(async () => {
+    if (!state.proposal) return false;
+    try {
+      const data = await callApi("reject", { proposalId: state.proposal.id });
+      setState((prev) => ({ ...prev, proposal: data.proposal, message: "Proposta rejeitada. Nenhum arquivo foi alterado." }));
+      return true;
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error instanceof Error ? error.message : "Erro ao rejeitar." }));
+      return false;
+    }
+  }, [callApi, state.proposal]);
+
+  const rollbackImprovement = useCallback(async () => {
+    if (!state.proposal) return false;
+    try {
+      const data = await callApi("rollback", { proposalId: state.proposal.id });
+      setState((prev) => ({ ...prev, proposal: data.proposal, message: data.result?.message || "Backup restaurado." }));
+      return Boolean(data.ok);
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error instanceof Error ? error.message : "Erro ao restaurar backup." }));
+      return false;
+    }
+  }, [callApi, state.proposal]);
+
+  const reset = useCallback(() => setState(initialState), []);
 
   return {
     ...state,
-    startImprovement,
-    cancelImprovement,
+    startImprovement: proposeImprovement,
+    proposeImprovement,
+    approveImprovement,
+    executeImprovement,
+    rejectImprovement,
+    rollbackImprovement,
+    cancelImprovement: reset,
     reset,
   };
 }
