@@ -4,6 +4,7 @@ interface JarvisCoreProps {
   isListening?: boolean;
   isThinking?: boolean;
   isSpeaking?: boolean;
+  isExpanded?: boolean;
   onClick?: () => void;
 }
 
@@ -11,6 +12,7 @@ export function JarvisCore({
   isListening = false,
   isThinking = false,
   isSpeaking = false,
+  isExpanded = false,
   onClick,
 }: JarvisCoreProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -167,7 +169,11 @@ export function JarvisCore({
   }, [isListening, isThinking, isSpeaking]);
 
   return (
-    <div className="relative flex items-center justify-center cursor-pointer scale-90 sm:scale-100" onClick={onClick}>
+    <div
+      className={`relative flex items-center justify-center cursor-pointer transition-transform duration-500 ease-out ${isExpanded ? "scale-[1.05] sm:scale-[1.15]" : "scale-90 sm:scale-100"}`}
+      onClick={onClick}
+      aria-label={isExpanded ? "Núcleo ampliado com chat aberto" : "Núcleo do J.A.R.V.I.S."}
+    >
       <canvas
         ref={canvasRef}
         width={600}

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 
+const BOOT_CHAR_DELAY_MS = 2;
+const BOOT_LINE_DELAY_MS = 18;
+const BOOT_COMPLETE_DELAY_MS = 120;
+const BOOT_FADE_MS = 250;
+
 const BOOT_LINES = [
   "INICIALIZANDO J.A.R.V.I.S. v7.3.1...",
   "CARREGANDO PROTOCOLOS DE INTERFACE NEURAL...",
@@ -24,32 +29,34 @@ export function BootSequence({ onComplete }: BootSequenceProps) {
 
   useEffect(() => {
     if (currentLine >= BOOT_LINES.length) {
-      setTimeout(() => {
+      let finishTimer: ReturnType<typeof setTimeout> | undefined;
+      const completeTimer = setTimeout(() => {
         setDone(true);
-        setTimeout(onComplete, 600);
-      }, 400);
-      return;
+        finishTimer = setTimeout(onComplete, BOOT_FADE_MS);
+      }, BOOT_COMPLETE_DELAY_MS);
+      return () => {
+        clearTimeout(completeTimer);
+        if (finishTimer) clearTimeout(finishTimer);
+      };
     }
 
     const line = BOOT_LINES[currentLine];
     if (typedChars < line.length) {
-      // Velocidade de digitação aumentada (de 18ms para 8ms)
-      const t = setTimeout(() => setTypedChars((c) => c + 1), 8);
+      const t = setTimeout(() => setTypedChars((c) => c + 1), BOOT_CHAR_DELAY_MS);
       return () => clearTimeout(t);
     } else {
-      // Intervalo entre linhas reduzido (de 120ms para 40ms)
       const t = setTimeout(() => {
         setLines((prev) => [...prev, line]);
         setCurrentLine((c) => c + 1);
         setTypedChars(0);
-      }, 40);
+      }, BOOT_LINE_DELAY_MS);
       return () => clearTimeout(t);
     }
   }, [currentLine, typedChars, onComplete]);
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-700 ${done ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-300 ${done ? "opacity-0 pointer-events-none" : "opacity-100"}`}
       style={{ background: "#00050a" }}
     >
       {/* Animated rings */}
