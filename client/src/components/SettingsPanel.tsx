@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Settings, X, Zap, Volume2, Cpu, Database, Activity, Gauge } from "lucide-react";
 
 interface SettingsPanelProps {
@@ -9,7 +9,15 @@ interface SettingsPanelProps {
     vadThreshold: number;
     bargeInEnabled: boolean;
     hybridMode: boolean;
+    voiceSpeed: number;
+    voiceMode: "instant" | "balanced" | "premium";
+    speakImmediately: boolean;
+    sarcasmLevel: number;
+    autoVision: boolean;
+    localProvider: "ollama" | "lmstudio";
     localOllamaUrl: string;
+    localOpenAIUrl: string;
+    localModel: string;
   };
   onConfigChange: (newConfig: any) => void;
 }
@@ -115,6 +123,65 @@ export function SettingsPanel({ isOpen, onClose, config, onConfigChange }: Setti
               </button>
             </div>
 
+            {/* Auto Vision Toggle */}
+            <div className="flex items-center justify-between p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+              <div className="flex items-center gap-3">
+                <Gauge size={16} className="text-cyan-400" />
+                <div>
+                  <div className="text-xs font-bold text-cyan-300 uppercase">Visão Contínua do PC</div>
+                  <div className="text-[9px] text-cyan-400/50">Permitir inspeção automática sem re-compartilhar</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleChange("autoVision", !localConfig.autoVision)}
+                className={`w-10 h-5 rounded-full relative transition-colors ${localConfig.autoVision ? 'bg-cyan-500' : 'bg-cyan-900/50'}`}
+              >
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${localConfig.autoVision ? 'left-6' : 'left-1'}`} />
+              </button>
+            </div>
+
+            {/* Sarcasm Level */}
+            <div className="space-y-2 p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-cyan-400 uppercase tracking-tighter">
+                  Nível de Sarcasmo (Estilo Tony Stark)
+                </label>
+                <span className="text-[10px] font-mono text-cyan-300">
+                  {localConfig.sarcasmLevel}/10
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={localConfig.sarcasmLevel}
+                onChange={(e) => handleChange("sarcasmLevel", parseInt(e.target.value))}
+                className="w-full h-1.5 bg-cyan-900/50 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+            </div>
+
+            {/* Voice Speed */}
+            <div className="space-y-2 p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-cyan-400 uppercase tracking-tighter">
+                  Velocidade da Voz (Flash)
+                </label>
+                <span className="text-[10px] font-mono text-cyan-300">
+                  {localConfig.voiceSpeed}x
+                </span>
+              </div>
+              <input
+                type="range"
+                min="1.0"
+                max="1.8"
+                step="0.05"
+                value={localConfig.voiceSpeed}
+                onChange={(e) => handleChange("voiceSpeed", parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-cyan-900/50 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+            </div>
+
             {/* Hybrid Mode Toggle */}
             <div className="flex items-center justify-between p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
               <div className="flex items-center gap-3">
@@ -131,21 +198,79 @@ export function SettingsPanel({ isOpen, onClose, config, onConfigChange }: Setti
                 <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${localConfig.hybridMode ? 'left-6' : 'left-1'}`} />
               </button>
             </div>
+
+            {/* Voice Mode */}
+            <div className="space-y-2 p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+              <label className="text-xs font-bold text-cyan-400 uppercase tracking-tighter">Modo de Voz</label>
+              <select
+                value={localConfig.voiceMode}
+                onChange={(e) => handleChange("voiceMode", e.target.value as "instant" | "balanced" | "premium")}
+                className="w-full bg-cyan-950/50 border border-cyan-400/20 rounded px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400/50"
+              >
+                <option value="instant">Instantâneo — voz local</option>
+                <option value="balanced">Equilibrado — ElevenLabs</option>
+                <option value="premium">Premium — ElevenLabs</option>
+              </select>
+              <p className="text-[9px] text-cyan-400/50">A voz permanece fixa durante toda a resposta; não alterna a cada palavra.</p>
+            </div>
+
+            <div className="flex items-center justify-between p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+              <div>
+                <div className="text-xs font-bold text-cyan-300 uppercase">Confirmação imediata</div>
+                <div className="text-[9px] text-cyan-400/50">Falar antes da análise terminar</div>
+              </div>
+              <button
+                onClick={() => handleChange("speakImmediately", !localConfig.speakImmediately)}
+                className={`w-10 h-5 rounded-full relative transition-colors ${localConfig.speakImmediately ? 'bg-cyan-500' : 'bg-cyan-900/50'}`}
+              >
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${localConfig.speakImmediately ? 'left-6' : 'left-1'}`} />
+              </button>
+            </div>
           </div>
 
-          {/* Local URL */}
+          {/* Runtime local */}
+          <div className="space-y-3 p-3 border border-cyan-400/10 rounded bg-cyan-400/5">
+            <label className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-tighter">
+              <Database size={14} /> Runtime local prioritário
+            </label>
+            <select
+              value={localConfig.localProvider}
+              onChange={(e) => handleChange("localProvider", e.target.value as "ollama" | "lmstudio")}
+              className="w-full bg-cyan-950/50 border border-cyan-400/20 rounded px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400/50"
+            >
+              <option value="lmstudio">LM Studio — rápido para voz</option>
+              <option value="ollama">Ollama — compatibilidade existente</option>
+            </select>
+            <p className="text-[9px] text-cyan-400/50">Use LM Studio para conversas rápidas; pedidos que usam ferramentas continuam protegidos pelos provedores especializados.</p>
+          </div>
+
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-tighter">
-              <Database size={14} /> Endereço do Servidor Local (Túnel)
+              <Database size={14} /> Endereço do servidor local
             </label>
             <input
               type="text"
-              value={localConfig.localOllamaUrl}
-              onChange={(e) => handleChange("localOllamaUrl", e.target.value)}
-              placeholder="http://localhost:11434"
+              value={localConfig.localProvider === "lmstudio" ? localConfig.localOpenAIUrl : localConfig.localOllamaUrl}
+              onChange={(e) => handleChange(localConfig.localProvider === "lmstudio" ? "localOpenAIUrl" : "localOllamaUrl", e.target.value)}
+              placeholder={localConfig.localProvider === "lmstudio" ? "http://127.0.0.1:1234/v1" : "http://localhost:11434"}
               className="w-full bg-cyan-950/50 border border-cyan-400/20 rounded px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400/50"
             />
           </div>
+
+          {localConfig.localProvider === "lmstudio" && (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-tighter">
+                <Cpu size={14} /> Modelo local (opcional)
+              </label>
+              <input
+                type="text"
+                value={localConfig.localModel}
+                onChange={(e) => handleChange("localModel", e.target.value)}
+                placeholder="Deixe vazio para usar o modelo carregado no LM Studio"
+                className="w-full bg-cyan-950/50 border border-cyan-400/20 rounded px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400/50"
+              />
+            </div>
+          )}
 
         </div>
 
