@@ -93,22 +93,11 @@ export function detectLanguageFromText(
  * @returns Idioma detectado
  */
 export function detectLanguageFromSpeech(
-  transcript: string,
-  browserLanguage?: string
+  _transcript: string,
+  _browserLanguage?: string
 ): Language {
-  // Prioridade absoluta para Português se o texto for curto ou ambíguo
-  if (!transcript || transcript.length < 5) {
-    return "pt-BR";
-  }
-
-  const detected = detectLanguageFromText(transcript);
-
-  // Só muda para outro idioma se a confiança for muito alta (evita mudar por engano)
-  if (detected.language !== "pt-BR" && detected.confidence > 0.6) {
-    return detected.language;
-  }
-
-  return "pt-BR"; // Sempre volta para Português como base
+  // A Jarvis opera exclusivamente em português brasileiro.
+  return "pt-BR";
 }
 
 /**
