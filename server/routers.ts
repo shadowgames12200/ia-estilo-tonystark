@@ -10,8 +10,12 @@ Você trata o usuário como "Senhor" ou "Sir" e mantém um tom profissional com 
 Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
 
 export const appRouter = router({
-  ...ollamaPluginsVoiceRouter,
-  ...advancedFeaturesRouter,
+  ollama: ollamaPluginsVoiceRouter.ollama,
+  plugins: ollamaPluginsVoiceRouter.plugins,
+  voiceOptim: ollamaPluginsVoiceRouter.voiceOptim,
+  deepReasoning: advancedFeaturesRouter.deepReasoning,
+  webNav: advancedFeaturesRouter.webNav,
+  media: advancedFeaturesRouter.media,
   jarvis: router({
     chat: publicProcedure
       .input(z.object({
@@ -19,6 +23,7 @@ export const appRouter = router({
           role: z.enum(["user", "assistant", "system"]),
           content: z.string(),
         })),
+        userId: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { messages } = input;
@@ -33,7 +38,8 @@ export const appRouter = router({
           // Usar o enhancedChat que suporta o loop de ferramentas/agente
           const result = await enhancedChat(fullMessages as any, {
             maxIterations: 10,
-            model: "llama-3.3-70b-versatile"
+            model: "llama-3.3-70b-versatile",
+            userId: input.userId || "anonimo"
           });
 
           return {

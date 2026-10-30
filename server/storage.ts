@@ -2,11 +2,9 @@
 // Uploads via Forge Server presigned URL to S3 (PUT direct).
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
 
-import { ENV } from "./_core/env.js";
-
 function getForgeConfig() {
-  const forgeUrl = ENV.forgeApiUrl;
-  const forgeKey = ENV.forgeApiKey;
+  const forgeUrl = process.env.BUILT_IN_FORGE_API_URL;
+  const forgeKey = process.env.BUILT_IN_FORGE_API_KEY;
 
   if (!forgeUrl || !forgeKey) {
     throw new Error(
