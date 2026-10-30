@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+import { authorizeToolCall, buildApprovalPrompt, prepareApprovalContext } from "../server/_core/agent-approval-policy.js";
+import { sdk } from "../server/_core/sdk.js";
+
 const SYSTEM_PROMPT = `Você é o J.A.R.V.I.S. (Just A Rather Very Intelligent System), a inteligência artificial pessoal de Tony Stark, adaptada para falar em português brasileiro.
 Sua personalidade é sofisticada, leal, proativa e extremamente competente.
 Você trata o usuário como "Senhor" ou "Senhor Stark" e mantém um tom profissional com humor sutil e seco.
@@ -12,7 +15,13 @@ CONSCIÊNCIA DE VOZ E ÁUDIO:
 - Se o Senhor pedir para falar mais rápido ou mais alto, você sabe que existem controles manuais no HUD para isso.
 - Fale como se estivesse em uma conversa real, não escrevendo um documento formal.
 
-Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.`;
+Você tem acesso a um sandbox de programação avançada e pode executar código para resolver problemas complexos.
+
+CORREÇÃO E AUTO MELHORIA:
+- Se o usuário relatar que um botão, recurso ou parte do sistema não funciona, faça diagnóstico e use self_improvement com action=propose. Não altere arquivos nessa etapa.
+- Mostre a proposta, os arquivos afetados, riscos e benefícios e peça autorização explícita.
+- Só use approve ou execute depois da confirmação explícita do usuário. Alterações criam backup, passam por validação e podem ser revertidas com rollback.
+- Nunca diga que corrigiu algo se a ferramenta não retornar sucesso.`;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -36,6 +45,23 @@ const WEB_SEARCH_TOOL = {
         query: { type: "string", description: "O termo de pesquisa ou pergunta." },
       },
       required: ["query"],
+    },
+  },
+};
+
+const SELF_IMPROVEMENT_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "self_improvement",
+    description: "Analisa um problema e propõe uma correção no próprio código. Propor não altera arquivos; aprovar e executar são ações separadas e sensíveis.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string" as const, enum: ["propose", "list", "approve", "reject", "execute", "rollback"] },
+        request: { type: "string", description: "Pedido do usuário para diagnóstico ou auto melhoria." },
+        proposalId: { type: "string", description: "ID da proposta para aprovar, executar, rejeitar ou restaurar." },
+      },
+      required: ["action"],
     },
   },
 };
@@ -157,12 +183,36 @@ function executeJs(code: string): string {
 }
 
 // Tool handlers
-async function handleToolCall(name: string, args: Record<string, unknown>): Promise<string> {
+async function handleToolCall(name: string, args: Record<string, unknown>, userId: string): Promise<string> {
+  const authorization = authorizeToolCall(userId, name, args);
+  if (!authorization.allowed) return authorization.message || "Ação bloqueada para confirmação.";
+
   switch (name) {
     case "web_search":
       return webSearch(args.query as string);
     case "execute_js":
       return executeJs(args.code as string);
+    case "self_improvement": {
+      const service = await import("../server/_core/self-improvement.js");
+      const action = String(args.action || "list");
+      if (action === "propose") {
+        const proposal = await service.proposeFromRequest(String(args.request || ""));
+        return `PROPOSTA PENDENTE: ${JSON.stringify(proposal)}. Nenhum arquivo foi alterado. Apresente os detalhes e peça autorização.`;
+      }
+      if (action === "list") return JSON.stringify(service.listProposals());
+      const proposalId = String(args.proposalId || "");
+      if (!proposalId) return "proposalId é obrigatório para esta ação.";
+      if (action === "approve") return service.approveProposal(proposalId) ? `Proposta ${proposalId} aprovada. Ainda é necessário executar separadamente.` : "Proposta inexistente ou não pendente.";
+      if (action === "reject") return service.rejectProposal(proposalId) ? `Proposta ${proposalId} rejeitada.` : "Proposta não encontrada.";
+      if (action === "execute") {
+        const proposal = service.getProposal(proposalId);
+        if (!proposal || proposal.status !== "approved") return "Execução bloqueada: a proposta precisa estar aprovada.";
+        const result = await service.executeApprovedImprovement(proposalId);
+        return result.success ? `Correção aplicada e validada. Backup: ${result.backupId}.` : result.message;
+      }
+      if (action === "rollback") return (await service.rollbackImprovement(proposalId)).message;
+      return "Ação de auto melhoria inválida.";
+    }
     default:
       return `Ferramenta não disponível: ${name}`;
   }
@@ -182,8 +232,18 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+  const authenticatedUser = await sdk.authenticateRequest(req as any).catch(() => null);
+  if (!authenticatedUser) return res.status(401).json({ error: "Sessão autenticada obrigatória." });
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  if (process.env.LOCAL_ONLY_MODE !== "false") {
+    return res.status(410).json({
+      content: "Esta rota antiga está desativada no modo exclusivamente local. Use /api/chat-stream para conversar pelo LM Studio.",
+      success: false,
+      provider: "local-only",
+    });
+  }
+
   if (!GROQ_API_KEY) {
     console.error("[Chat] GROQ_API_KEY not configured");
     return res.status(500).json({
@@ -193,6 +253,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { messages }: { messages: Message[] } = req.body;
+  const userId = String(authenticatedUser.id);
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "Messages array is required" });
@@ -200,11 +261,12 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cfg = DEFAULT_CONFIG;
   let toolCallCount = 0;
+  const approvalContext = prepareApprovalContext(userId, messages[messages.length - 1]?.content || "");
 
-  // Build conversation history with system prompt
+  // Build conversation history with the approval policy attached to every request.
   const conversationHistory: Message[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    ...messages,
+    { role: "system", content: `${SYSTEM_PROMPT}\n\n${buildApprovalPrompt(approvalContext)}` },
+    ...messages.slice(-12),
   ];
 
   try {
@@ -221,7 +283,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Add tools if available
       if (toolCallCount < cfg.maxToolCalls) {
-        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL];
+        payload.tools = [WEB_SEARCH_TOOL, EXECUTE_CODE_TOOL, SELF_IMPROVEMENT_TOOL];
         payload.tool_choice = "auto";
       }
 
@@ -260,7 +322,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           toolCallCount++;
           console.log(`[Chat] Tool call: ${toolName} (iteration ${iteration + 1})`);
 
-          const result = await handleToolCall(toolName, toolArgs);
+          const result = await handleToolCall(toolName, toolArgs, userId);
 
           // Add assistant message with tool calls
           conversationHistory.push({
