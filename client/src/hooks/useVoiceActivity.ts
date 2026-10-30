@@ -15,6 +15,7 @@ export function useVoiceActivity(threshold = 0.06) {
 
   const onBargeInRef = useRef<(() => void) | null>(null);
   const aiSpeakingRef = useRef(false);
+  const aiStartTimeRef = useRef(0);
 
   const startMonitoring = useCallback(async () => {
     if (isRunningRef.current) return;
@@ -53,6 +54,8 @@ export function useVoiceActivity(threshold = 0.06) {
       const dataArray = new Uint8Array(bufferLength);
       let prevSpeaking = false;
       let silenceFrames = 0;
+      let speakingSince = 0;
+      let bargeInTriggered = false;
       const SILENCE_FRAMES_THRESHOLD = 15;
       const ACTIVITY_TIMEOUT = 2000;
 
@@ -72,6 +75,8 @@ export function useVoiceActivity(threshold = 0.06) {
           setIsUserSpeaking(true);
           prevSpeaking = true;
           silenceFrames = 0;
+          speakingSince = now;
+          bargeInTriggered = false;
           lastActivityTimeRef.current = now;
 
           if (silenceTimeoutRef.current) {
@@ -79,8 +84,14 @@ export function useVoiceActivity(threshold = 0.06) {
             silenceTimeoutRef.current = null;
           }
 
-          if (aiSpeakingRef.current && onBargeInRef.current) {
-            onBargeInRef.current();
+          // O disparo ocorre somente após fala contínua, evitando ruído/eco no primeiro frame.
+        } else if (nowSpeaking && prevSpeaking) {
+          if (aiSpeakingRef.current && !bargeInTriggered && onBargeInRef.current && now - speakingSince >= 350) {
+            const timeSpeaking = Date.now() - aiStartTimeRef.current;
+            if (timeSpeaking > 800) {
+              bargeInTriggered = true;
+              onBargeInRef.current();
+            }
           }
         } else if (!nowSpeaking && prevSpeaking) {
           silenceFrames++;
@@ -90,6 +101,8 @@ export function useVoiceActivity(threshold = 0.06) {
                 setIsUserSpeaking(false);
                 prevSpeaking = false;
                 silenceFrames = 0;
+                speakingSince = 0;
+                bargeInTriggered = false;
                 silenceTimeoutRef.current = null;
               }, 300);
             }
@@ -106,6 +119,8 @@ export function useVoiceActivity(threshold = 0.06) {
             setIsUserSpeaking(false);
             prevSpeaking = false;
             silenceFrames = 0;
+            speakingSince = 0;
+            bargeInTriggered = false;
           }
         }
 
@@ -141,6 +156,9 @@ export function useVoiceActivity(threshold = 0.06) {
   }, []);
 
   const setAISpeakingStatus = useCallback((isSpeaking: boolean) => {
+    if (isSpeaking && !aiSpeakingRef.current) {
+      aiStartTimeRef.current = Date.now();
+    }
     aiSpeakingRef.current = isSpeaking;
   }, []);
 
