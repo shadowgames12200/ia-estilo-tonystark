@@ -43,7 +43,7 @@ export const advancedFeaturesRouter = router({
           type: z.enum(["goto", "click", "fill", "extract", "wait", "screenshot"]),
           target: z.string().optional(),
           value: z.string().optional(),
-          selectors: z.record(z.string()).optional(),
+          selectors: z.record(z.string(), z.string()).optional(),
         })),
       }))
       .mutation(async ({ input }) => {

@@ -61,8 +61,8 @@ export function registerLocalAuthRoutes(app: any) {
       }
 
       // Determine role: admin if this is the owner's email
-      const OWNER_EMAILS = ["charleshenriquegonsalves05@gmail.com"];
-      const isOwner = OWNER_EMAILS.includes(normalizedEmail) || openId === ENV.ownerOpenId;
+      // Administração deve ser configurada no ambiente, nunca por uma lista fixa no código.
+      const isOwner = Boolean(ENV.ownerOpenId && openId === ENV.ownerOpenId);
 
       // Upsert user in database
       await db.upsertUser({

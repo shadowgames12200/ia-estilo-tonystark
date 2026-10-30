@@ -63,7 +63,7 @@ export const ollamaPluginsVoiceRouter = router({
     execute: protectedProcedure
       .input(z.object({
         name: z.string(),
-        args: z.record(z.any()),
+        args: z.record(z.string(), z.any()),
       }))
       .mutation(async ({ input }) => {
         try {
