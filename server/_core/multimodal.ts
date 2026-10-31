@@ -49,8 +49,8 @@ export async function generateImage(params: ImageGenerationParams): Promise<stri
       throw new Error(`Erro na geração de imagem: ${error}`);
     }
 
-    const data = await response.json();
-    return data.data.map((img: any) => img.url);
+    const data = await response.json() as { data?: Array<{ url?: string }> };
+    return (data.data ?? []).map(img => img.url).filter((url): url is string => Boolean(url));
   } catch (err) {
     console.error("[Multimodal] Generation error:", err);
     throw err;
@@ -104,8 +104,8 @@ export async function analyzeImage(
       throw new Error(`Erro na análise de visão: ${error}`);
     }
 
-    const data = await response.json();
-    return data.choices[0].message.content;
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content || "";
   } catch (err) {
     console.error("[Multimodal] Vision error:", err);
     throw err;

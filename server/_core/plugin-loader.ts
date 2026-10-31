@@ -100,7 +100,7 @@ class PluginLoader {
       if (ext === ".py") language = "python";
 
       const handler = async (args: any): Promise<string> => {
-        return await this.executePlugin(filePath, args, language);
+        return await this.executeFile(filePath, args, language);
       };
 
       return {
@@ -123,7 +123,7 @@ class PluginLoader {
   /**
    * Executa um plugin
    */
-  private async executePlugin(
+  private async executeFile(
     filePath: string,
     args: any,
     language: "javascript" | "python" | "shell"

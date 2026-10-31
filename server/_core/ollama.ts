@@ -33,6 +33,8 @@ class OllamaClient {
   private baseUrl: string;
   private isAvailable: boolean = false;
   private checkedAvailability: boolean = false;
+  private checkedAt = 0;
+  private readonly availabilityTtlMs = 10_000;
 
   constructor(baseUrl: string = "http://localhost:11434") {
     this.baseUrl = baseUrl;
@@ -42,21 +44,31 @@ class OllamaClient {
    * Verifica se o Ollama está disponível
    */
   async checkAvailability(): Promise<boolean> {
-    if (this.checkedAvailability) return this.isAvailable;
+    const now = Date.now();
+    if (this.checkedAvailability && now - this.checkedAt < this.availabilityTtlMs) {
+      return this.isAvailable;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`, {
         method: "GET",
-        timeout: 5000,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       this.isAvailable = response.ok;
       this.checkedAvailability = true;
+      this.checkedAt = Date.now();
       console.log(`[Ollama] Disponibilidade: ${this.isAvailable}`);
       return this.isAvailable;
     } catch (err) {
+      clearTimeout(timeoutId);
       console.warn("[Ollama] Não está disponível:", (err as Error).message);
       this.isAvailable = false;
       this.checkedAvailability = true;
+      this.checkedAt = Date.now();
       return false;
     }
   }
@@ -68,7 +80,7 @@ class OllamaClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`);
       if (!response.ok) throw new Error("Falha ao listar modelos");
-      const data = await response.json();
+      const data = await response.json() as { models?: OllamaModel[] };
       return data.models || [];
     } catch (err) {
       console.error("[Ollama] Erro ao listar modelos:", err);
@@ -139,7 +151,7 @@ class OllamaClient {
       return response.body as ReadableStream;
     }
 
-    return await response.json();
+    return await response.json() as OllamaResponse;
   }
 
   /**
@@ -213,7 +225,7 @@ class OllamaClient {
 }
 
 export const ollamaClient = new OllamaClient(
-  process.env.OLLAMA_URL || "http://localhost:11434"
+  process.env.OLLAMA_BASE_URL || process.env.OLLAMA_URL || "http://localhost:11434"
 );
 
 /**

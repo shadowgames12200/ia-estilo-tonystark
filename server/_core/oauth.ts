@@ -2,7 +2,7 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import * as db from "../db.js";
 import { getSessionCookieOptions } from "./cookies.js";
 import { sdk } from "./sdk.js";
-import { supabase } from "./supabase.js";
+import { supabase } from "./supabaseClient.js";
 
 async function handleSupabaseCallback(req: any, res: any, accessToken: string, refreshToken?: string, isRedirect = false) {
   try {
